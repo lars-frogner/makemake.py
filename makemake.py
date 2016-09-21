@@ -145,9 +145,6 @@ class Source:
 		for dep in list(self.proc_deps):
 			if dep in self.procedures: self.proc_deps.remove(dep)
 
-
-		print filename, self.mod_deps
-
 		# Compilation rule for the makefile
 		self.compile_rule_declr = '\n\n%s\n%s%s: %s%s ' \
 								  % ('# Rule for compiling ' + filename,
@@ -185,12 +182,6 @@ for src in sources:
 	all_mod_deps += src.mod_deps
 	all_proc_deps += src.proc_deps
 # --
-
-print all_programs
-print all_modules
-print all_procedures
-print all_mod_deps
-print all_proc_deps
 
 # Only one executable can be built
 if len(all_programs) != 1:
