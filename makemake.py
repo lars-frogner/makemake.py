@@ -41,22 +41,41 @@ class Source:
 		self.programs = []
 		self.modules = []
 		self.procedures = []
-		self.deps = []
+		self.mod_deps = []
+		self.proc_deps = []
 
+		prev_line = ''
 		inside = False
 
 		# Parse source file
 		for line in lines:
 
-			words = (line.split('!')[0]).split()
+			words = (prev_line + line).split('!')[0] # Ignore everything after "!"
 
 			# Skip blank lines
-			if len(words) == 0: continue
+			if len(words.split()) == 0: continue
 
-			first_word = words[0].lower()
-			second_word = '' if len(words) < 2 else words[1].lower()
-			third_word = '' if len(words) < 3 else words[2].lower()
+			# If line is continued
+			if words.strip()[-1] == '&': 
 
+				# Save this line and continue to next one
+				prev_line = words.split('&')[0] + ' '
+				continue
+
+			else:
+				prev_line = ''
+
+			words = words.replace(',', ' ') 				 # Treat "," as word separator
+			words = words.replace('::', ' :: ')				 # Ensure separation at "::"
+			words = [word.lower() for word in words.split()] # List of words in lowercase
+
+			n_words = len(words)
+
+			first_word = words[0]
+			second_word = '' if n_words < 2 else words[1]
+			third_word = '' if n_words < 3 else words[2]
+
+			# External scope declarations
 			if not inside:
 
 				# Check for program declaration
@@ -97,24 +116,41 @@ class Source:
 					if dep[-1] == ',':
 						dep = dep[:-1]
 
-					self.deps.append(dep + '.mod')
+					self.mod_deps.append(dep + '.mod')
 
+			# Internal scope declarations
 			else:
 
-				if first_word == 'end' and second_word == inside:
+				# Check for declaration of external procedure
+				if 'external' in words:
+
+					ext_idx = words.index('external')
+
+					if '::' in words:
+
+						sep_idx = words.index('::')
+						self.proc_deps += words[sep_idx+1:]
+
+					else:
+						self.proc_deps += words[ext_idx+1:]
+
+				# Check for end of external scope
+				elif first_word == 'end' and second_word == inside:
 					inside = False
 
-		# Ignore dependencies on modules in the same file
-		for dep in self.deps:
-			if dep in self.modules: self.deps.remove(dep)
+		# Ignore dependencies on modules and procedures in the same file
+		for dep in list(self.mod_deps):
+			if dep in self.modules: self.mod_deps.remove(dep)
+		for dep in list(self.proc_deps):
+			if dep in self.procedures: self.proc_deps.remove(dep)
 
 		# Compilation rule for the makefile
 		self.compile_rule_declr = '\n\n%s\n%s%s: %s%s ' \
 								  % ('# Rule for compiling ' + filename,
 									 self.object_name + (' ' if len(self.modules) != 0 else ''),
 									 ' '.join(self.modules), 
-									 filename + (' ' if len(self.deps) != 0 else ''),
-									 ' '.join(self.deps))
+									 filename + (' ' if len(self.mod_deps) != 0 else ''),
+									 ' '.join(self.mod_deps))
 		self.compile_rule = '\n\t$(COMP) -c $(FLAGS) %s' % filename
 
 if len(sys.argv) < 2:
@@ -132,17 +168,23 @@ sources = [Source(source_path, filename) for filename in sys.argv[1:]]
 all_programs = []
 all_modules = []
 all_procedures = []
-all_deps = []
+all_mod_deps = []
+all_proc_deps = []
 
 for src in sources:
 
 	all_programs += src.programs
 	all_modules += src.modules
 	all_procedures += src.procedures
-	all_deps += src.deps
+	all_mod_deps += src.mod_deps
+	all_proc_deps += src.proc_deps
 # --
 
+print all_programs
+print all_modules
 print all_procedures
+print all_mod_deps
+print all_proc_deps
 
 # Only one executable can be built
 if len(all_programs) != 1:
@@ -150,15 +192,15 @@ if len(all_programs) != 1:
 	sys.exit()
 
 # -- Check for missing dependencies
-missing_deps = []
-for dep in all_deps:
+missing_mod_deps = []
+for dep in all_mod_deps:
 
 	if not dep in all_modules:
-		missing_deps.append(dep)
+		missing_mod_deps.append(dep)
 
-if len(missing_deps) != 0:
+if len(missing_mod_deps) != 0:
 
-	print '(makemake.py) Missing dependencies: %s' % ' '.join(missing_deps)
+	print '(makemake.py) Missing dependencies: %s' % ' '.join(missing_mod_deps)
 	sys.exit(1)
 
 # -- Determine which objects each source depends on
@@ -170,7 +212,7 @@ for src in sources:
 	dep_obects = []
 
 	# For each dependency the source has
-	for dep in src.deps:
+	for dep in src.mod_deps:
 
 		# Loop through all the other sources
 		for src2 in sources:
