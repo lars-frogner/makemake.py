@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 #
 # This program takes a list of Fortran files from the command line, 
 # and generates a makefile for building the corresponding executable.
@@ -13,7 +14,7 @@ class Source:
 	# This class parses an inputted .f90 file and stores information
 	# about which programs, modules and dependencies it contains.
 
-	def __init__(self, filename):
+	def __init__(self, path, filename):
 
 		name_parts = filename.split('.')
 
@@ -25,7 +26,7 @@ class Source:
 			sys.exit(1)
 
 		try:
-			f = open(filename, 'r')
+			f = open(os.path.join(path, filename), 'r')
 
 		except IOError:
 
@@ -85,13 +86,14 @@ class Source:
 
 if len(sys.argv) < 2:
 
-	print '(makemake.py) Usage: python makemake.py source1.f90 source2.f90 ...'
+	print '(makemake.py) Usage: makemake.py source1.f90 source2.f90 ...'
 	sys.exit(1)
 
+# Get path to directory this script was run from
 source_path = os.getcwd()
 
 # Read filenames from command line and turn them into Source instances
-sources = [Source(filename) for filename in sys.argv[1:]]
+sources = [Source(source_path, filename) for filename in sys.argv[1:]]
 
 # -- Collect all program, module and dependency names
 all_programs = []
@@ -188,8 +190,9 @@ clean:
    ''.join(compile_rules))
 
 # -- Save makfile
+makefilepath = os.path.join(source_path, 'makefile')
 writeFile = True
-if os.path.exists('makefile'):
+if os.path.exists(makefilepath):
 
 	yn = ''
 	while not yn in ['y', 'n']:
@@ -199,6 +202,7 @@ if os.path.exists('makefile'):
 
 if writeFile:
 
-	f = open('makefile', 'w')
+	f = open(makefilepath, 'w')
 	f.write(makefile)
 	f.close()
+	print '(makemake.py) New makefile generated (%s).' % makefilepath
