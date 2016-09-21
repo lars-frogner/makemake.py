@@ -40,36 +40,69 @@ class Source:
 		self.object_name = '.'.join(name_parts[:-1]) + '.o'
 		self.programs = []
 		self.modules = []
+		self.procedures = []
 		self.deps = []
+
+		inside = False
 
 		# Parse source file
 		for line in lines:
 
-			words = line.split()
+			words = (line.split('!')[0]).split()
 
 			# Skip blank lines
 			if len(words) == 0: continue
 
 			first_word = words[0].lower()
+			second_word = '' if len(words) < 2 else words[1].lower()
+			third_word = '' if len(words) < 3 else words[2].lower()
 
-			# Check for "program" keyword
-			if first_word == 'program':
-				self.programs.append(words[1].lower())
+			if not inside:
 
-			# Check for "module" keyword
-			elif first_word == 'module':
-				self.modules.append(words[1].lower() + '.mod')
+				# Check for program declaration
+				if first_word == 'program':
 
-			# Check for "use" keyword
-			elif first_word == 'use':
+					self.programs.append(second_word)
+					inside = 'program'
 
-				dep = words[1].lower()
+				# Check for module declaration
+				elif first_word == 'module':
 
-				# Remove trailing comma if present
-				if dep[-1] == ',':
-					dep = dep[:-1]
+					self.modules.append(second_word + '.mod')
+					inside = 'module'
 
-				self.deps.append(dep + '.mod')
+				# Check for function declaration
+				elif first_word == 'function':
+
+					self.procedures.append(second_word.split('(')[0])
+					inside = 'function'
+
+				elif second_word == 'function':
+
+					self.procedures.append(third_word.split('(')[0])
+					inside = 'function'
+
+				# Check for subroutine declaration
+				elif first_word == 'subroutine':
+
+					self.procedures.append(second_word.split('(')[0])
+					inside = 'subroutine'
+
+				# Check for module import statement
+				elif first_word == 'use':
+
+					dep = second_word
+
+					# Remove trailing comma if present
+					if dep[-1] == ',':
+						dep = dep[:-1]
+
+					self.deps.append(dep + '.mod')
+
+			else:
+
+				if first_word == 'end' and second_word == inside:
+					inside = False
 
 		# Ignore dependencies on modules in the same file
 		for dep in self.deps:
@@ -98,14 +131,18 @@ sources = [Source(source_path, filename) for filename in sys.argv[1:]]
 # -- Collect all program, module and dependency names
 all_programs = []
 all_modules = []
+all_procedures = []
 all_deps = []
 
 for src in sources:
 
 	all_programs += src.programs
 	all_modules += src.modules
+	all_procedures += src.procedures
 	all_deps += src.deps
 # --
+
+print all_procedures
 
 # Only one executable can be built
 if len(all_programs) != 1:
@@ -160,12 +197,12 @@ MODULES = %s
 FLAGS = 
 
 # Make sure certain rules are not activated by the presence of files
-.PHONY: all fast set_debug_flags set_fast_flags clean
+.PHONY: all debug fast set_debug_flags set_fast_flags clean
 
-# Define default target group (activated by calling just 'make')
+# Define default target group (call 'make' to use)
 all: $(EXECNAME)
 
-# Define optional target groups (activated by calling 'make <name of target group>')
+# Define optional target groups (call 'make <name of target group>' to use)
 debug: set_debug_flags $(EXECNAME)
 fast: set_fast_flags $(EXECNAME)
 
@@ -181,7 +218,7 @@ set_fast_flags:
 $(EXECNAME): $(OBJECTS)
 	$(COMP) -o $(EXECNAME) $(OBJECTS)%s
 
-# Action for removing all auxiliary files
+# Action for removing all auxiliary files (call 'make clean' to use)
 clean:
 	rm -f $(OBJECTS) $(MODULES)''' \
 % (all_programs[0],
@@ -189,16 +226,21 @@ clean:
    ' '.join(all_modules),
    ''.join(compile_rules))
 
-# -- Save makfile
+# -- Save makefile
 makefilepath = os.path.join(source_path, 'makefile')
 writeFile = True
+
 if os.path.exists(makefilepath):
 
+	# Ask user before overwriting any existing makefiles
 	yn = ''
 	while not yn in ['y', 'n']:
-		yn = raw_input('(makemake.py) A makefile already exists. Overwrite? [Y/n] ').lower()
+		yn = raw_input('(makemake.py) A makefile already exists. Overwrite? [Y/n]\n').lower()
 
-	if yn == 'n': writeFile = False
+	if yn == 'n':
+
+		writeFile = False
+		print '(makemake.py) Makefile generation cancelled.'
 
 if writeFile:
 
