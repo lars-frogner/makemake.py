@@ -278,7 +278,7 @@ set_debug_flags:
 
 # Defines appropriate compiler flags for high performance
 set_fast_flags:
-	$(eval FLAGS = -O2)
+	$(eval FLAGS = -O3)
 
 # Rule for linking object files
 $(EXECNAME): $(OBJECTS)
