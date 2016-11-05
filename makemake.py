@@ -5,7 +5,7 @@
 #
 # State: Functional
 #
-# Last modified 13.10.2016 by Lars Frogner
+# Last modified 05.11.2016 by Lars Frogner
 #
 import sys, os
 
@@ -120,7 +120,8 @@ class Source:
 					if dep[-1] == ',':
 						dep = dep[:-1]
 
-					self.mod_deps.append(dep + '.mod')
+					if dep != 'mpi':
+						self.mod_deps.append(dep + '.mod')
 
 				# Check for declaration of external procedure
 				elif 'external' in words:
