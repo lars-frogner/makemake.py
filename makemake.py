@@ -5,162 +5,173 @@
 #
 # State: Functional
 #
-# Last modified 05.11.2016 by Lars Frogner
+# Last modified 14.11.2016 by Lars Frogner
 #
 import sys, os
 
 class Source:
 
-	# This class parses an inputted .f90 file and stores information
-	# about which programs, modules, external procedures and 
-	# dependencies it contains.
+    # This class parses an inputted .f90 file and stores information
+    # about which programs, modules, external procedures and 
+    # dependencies it contains.
 
-	def __init__(self, path, filename):
+    def __init__(self, path, filename):
 
-		name_parts = filename.split('.')
+        filename_with_path = filename
 
-		# -- Validate filename
-		if name_parts[-1] != 'f90':
+        file_path = '/'.join(filename_with_path.split('/')[:-1])
+        has_abs_path = len(file_path.strip()) > 0
 
-			print '(makemake.py) Invalid file extension for \"%s\".' % filename \
-				  + ' Must be \".f90\".'
-			sys.exit(1)
+        filename = filename_with_path.split('/')[-1]
 
-		try:
-			f = open(os.path.join(path, filename), 'r')
+        name_parts = filename.split('.')
 
-		except IOError:
+        # -- Validate filename
+        if name_parts[-1] != 'f90':
 
-			print '(makemake.py) Couldn\'t open file \"%s\".' % filename
-			sys.exit(1)
-		# --
+            print '(makemake.py) Invalid file extension for \"%s\".' % filename_with_path \
+                  + ' Must be \".f90\".'
+            sys.exit(1)
 
-		lines = f.readlines()
-		f.close()
+        try:
+            if has_abs_path:
+                print os.path.join(file_path, filename)
+                f = open(os.path.join(file_path, filename), 'r')
+            else:
+                f = open(os.path.join(path, filename), 'r')
 
-		self.object_name = '.'.join(name_parts[:-1]) + '.o'
-		self.programs = []
-		self.modules = []
-		self.procedures = []
-		self.mod_deps = []
-		self.proc_deps = []
+        except IOError:
 
-		prev_line = ''
-		inside = False
+            print '(makemake.py) Couldn\'t open file \"%s\".' % filename_with_path
+            sys.exit(1)
+        # --
 
-		# Parse source file
-		for line in lines:
+        lines = f.readlines()
+        f.close()
 
-			words = (prev_line + line).split('!')[0] # Ignore everything after "!"
+        self.object_name = '.'.join(name_parts[:-1]) + '.o'
+        self.programs = []
+        self.modules = []
+        self.procedures = []
+        self.mod_deps = []
+        self.proc_deps = []
 
-			# Skip blank lines
-			if len(words.split()) == 0: continue
+        prev_line = ''
+        inside = False
 
-			# If line is continued
-			if words.strip()[-1] == '&': 
+        # Parse source file
+        for line in lines:
 
-				# Save this line and continue to next one
-				prev_line = words.split('&')[0] + ' '
-				continue
+            words = (prev_line + line).split('!')[0] # Ignore everything after "!"
 
-			else:
-				prev_line = ''
+            # Skip blank lines
+            if len(words.split()) == 0: continue
 
-			words = words.replace(',', ' ') 				 # Treat "," as word separator
-			words = words.replace('::', ' :: ')				 # Ensure separation at "::"
-			words = [word.lower() for word in words.split()] # List of words in lowercase
+            # If line is continued
+            if words.strip()[-1] == '&': 
 
-			n_words = len(words)
+                # Save this line and continue to next one
+                prev_line = words.split('&')[0] + ' '
+                continue
 
-			first_word = words[0]
-			second_word = '' if n_words < 2 else words[1]
-			third_word = '' if n_words < 3 else words[2]
+            else:
+                prev_line = ''
 
-			# External scope declarations
-			if not inside:
+            words = words.replace(',', ' ')                  # Treat "," as word separator
+            words = words.replace('::', ' :: ')              # Ensure separation at "::"
+            words = [word.lower() for word in words.split()] # List of words in lowercase
 
-				# Check for program declaration
-				if first_word == 'program':
+            n_words = len(words)
 
-					self.programs.append(second_word)
-					inside = 'program'
+            first_word = words[0]
+            second_word = '' if n_words < 2 else words[1]
+            third_word = '' if n_words < 3 else words[2]
 
-				# Check for module declaration
-				elif first_word == 'module':
+            # External scope declarations
+            if not inside:
 
-					self.modules.append(second_word + '.mod')
-					inside = 'module'
+                # Check for program declaration
+                if first_word == 'program':
 
-				# Check for function declaration
-				elif first_word == 'function':
+                    self.programs.append(second_word)
+                    inside = 'program'
 
-					self.procedures.append(second_word.split('(')[0])
-					inside = 'function'
+                # Check for module declaration
+                elif first_word == 'module':
 
-				elif second_word == 'function':
+                    self.modules.append(second_word + '.mod')
+                    inside = 'module'
 
-					self.procedures.append(third_word.split('(')[0])
-					inside = 'function'
+                # Check for function declaration
+                elif first_word == 'function':
 
-				# Check for subroutine declaration
-				elif first_word == 'subroutine':
+                    self.procedures.append(second_word.split('(')[0])
+                    inside = 'function'
 
-					self.procedures.append(second_word.split('(')[0])
-					inside = 'subroutine'
+                elif second_word == 'function':
 
-			# Internal scope declarations
-			else:
+                    self.procedures.append(third_word.split('(')[0])
+                    inside = 'function'
 
-				# Check for module import statement
-				if first_word == 'use':
+                # Check for subroutine declaration
+                elif first_word == 'subroutine':
 
-					dep = second_word
+                    self.procedures.append(second_word.split('(')[0])
+                    inside = 'subroutine'
 
-					# Remove trailing comma if present
-					if dep[-1] == ',':
-						dep = dep[:-1]
+            # Internal scope declarations
+            else:
 
-					if dep != 'mpi':
-						self.mod_deps.append(dep + '.mod')
+                # Check for module import statement
+                if first_word == 'use':
 
-				# Check for declaration of external procedure
-				elif 'external' in words:
+                    dep = second_word
 
-					ext_idx = words.index('external')
+                    # Remove trailing comma if present
+                    if dep[-1] == ',':
+                        dep = dep[:-1]
 
-					if '::' in words:
+                    if dep != 'mpi':
+                        self.mod_deps.append(dep + '.mod')
 
-						sep_idx = words.index('::')
-						self.proc_deps += words[sep_idx+1:]
+                # Check for declaration of external procedure
+                elif 'external' in words:
 
-					else:
-						self.proc_deps += words[ext_idx+1:]
+                    ext_idx = words.index('external')
 
-				# Check for end of external scope
-				elif first_word == 'end' and second_word == inside:
-					inside = False
+                    if '::' in words:
 
-		# Ignore dependencies on modules and procedures in the same file
-		for dep in list(self.mod_deps):
-			if dep in self.modules: self.mod_deps.remove(dep)
-		for dep in list(self.proc_deps):
-			if dep in self.procedures: self.proc_deps.remove(dep)
+                        sep_idx = words.index('::')
+                        self.proc_deps += words[sep_idx+1:]
 
-		# Compilation rule for the makefile
-		self.compile_rule_declr = '\n\n%s\n%s%s: %s%s ' \
-								  % ('# Rule for compiling ' + filename,
-									 self.object_name + (' ' if len(self.modules) != 0 else ''),
-									 ' '.join(self.modules), 
-									 filename + (' ' if len(self.mod_deps) != 0 else ''),
-									 ' '.join(self.mod_deps))
-		self.compile_rule = '\n%s\t$(COMP) -c $(FLAGS) %s' \
-							% (('\trm -f %s\n' % (' '.join(self.modules))) if len(self.modules) != 0 else '', 
-							   filename)
+                    else:
+                        self.proc_deps += words[ext_idx+1:]
+
+                # Check for end of external scope
+                elif first_word == 'end' and second_word == inside:
+                    inside = False
+
+        # Ignore dependencies on modules and procedures in the same file
+        for dep in list(self.mod_deps):
+            if dep in self.modules: self.mod_deps.remove(dep)
+        for dep in list(self.proc_deps):
+            if dep in self.procedures: self.proc_deps.remove(dep)
+
+        # Compilation rule for the makefile
+        self.compile_rule_declr = '\n\n%s\n%s%s: %s%s ' \
+                                  % ('# Rule for compiling ' + filename,
+                                     self.object_name + (' ' if len(self.modules) != 0 else ''),
+                                     ' '.join(self.modules), 
+                                     filename_with_path.replace(' ', '\ ') + (' ' if len(self.mod_deps) != 0 else ''),
+                                     ' '.join(self.mod_deps))
+        self.compile_rule = '\n%s\t$(COMP) -c $(COMP_FLAGS) \"%s\"' \
+                            % (('\trm -f %s\n' % (' '.join(self.modules))) if len(self.modules) != 0 else '', 
+                               filename_with_path)
 
 if len(sys.argv) < 2:
 
-	print '(makemake.py) Usage: makemake.py source1.f90 source2.f90 ...'
-	sys.exit(1)
+    print '(makemake.py) Usage: makemake.py source1.f90 source2.f90 ...'
+    sys.exit(1)
 
 # Get path to the directory this script was run from
 source_path = os.getcwd()
@@ -170,10 +181,10 @@ command_arguments = sys.argv[1:]
 
 if '-p' in command_arguments:
 
-	command_arguments.remove('-p')
-	compiler = 'mpif90'
+    command_arguments.remove('-p')
+    compiler = 'mpif90'
 else:
-	compiler = 'gfortran'
+    compiler = 'gfortran'
 # --
 
 # Read filenames from command line and turn them into Source instances
@@ -188,37 +199,37 @@ all_proc_deps = []
 
 for src in sources:
 
-	all_programs += src.programs
-	all_modules += src.modules
-	all_procedures += src.procedures
-	all_mod_deps += src.mod_deps
-	all_proc_deps += src.proc_deps
+    all_programs += src.programs
+    all_modules += src.modules
+    all_procedures += src.procedures
+    all_mod_deps += src.mod_deps
+    all_proc_deps += src.proc_deps
 # --
 
 # Only one executable can be built
 if len(all_programs) != 1:
-	print '(makemake.py) There must be exactly one program in all the sources combined.'
-	sys.exit()
+    print '(makemake.py) There must be exactly one program in all the sources combined.'
+    sys.exit()
 
 # -- Check for missing dependencies
 
 missing_mod_deps = []
 for dep in all_mod_deps:
-	if not dep in all_modules: missing_mod_deps.append(dep)
+    if not dep in all_modules: missing_mod_deps.append(dep)
 
 if len(missing_mod_deps) != 0:
 
-	print '(makemake.py) Missing module dependencies: %s' % ' '.join(missing_mod_deps)
-	sys.exit(1)
+    print '(makemake.py) Missing module dependencies: %s' % ' '.join(missing_mod_deps)
+    sys.exit(1)
 
 missing_proc_deps = []
 for dep in all_proc_deps:
-	if not dep in all_procedures: missing_proc_deps.append(dep)
+    if not dep in all_procedures: missing_proc_deps.append(dep)
 
 if len(missing_proc_deps) != 0:
 
-	print '(makemake.py) Missing procedure dependencies: %s' % ' '.join(missing_proc_deps)
-	sys.exit(1)
+    print '(makemake.py) Missing procedure dependencies: %s' % ' '.join(missing_proc_deps)
+    sys.exit(1)
 
 # -- Determine which objects each source depends on
 compile_rules = []
@@ -226,35 +237,35 @@ compile_rules = []
 # For each source
 for src in sources:
 
-	dep_obects = []
+    dep_obects = []
 
-	# For each module dependency the source has
-	for dep in src.mod_deps:
+    # For each module dependency the source has
+    for dep in src.mod_deps:
 
-		# Loop through all the other sources
-		for src2 in sources:
+        # Loop through all the other sources
+        for src2 in sources:
 
-			if not (src2 is src):
+            if not (src2 is src):
 
-				# Add object name if it has the correct module
-				if dep in src2.modules:
-					dep_obects.append(src2.object_name)
+                # Add object name if it has the correct module
+                if dep in src2.modules:
+                    dep_obects.append(src2.object_name)
 
-	# Repeat for procedure dependencies
-	for dep in src.proc_deps:
+    # Repeat for procedure dependencies
+    for dep in src.proc_deps:
 
-		for src2 in sources:
+        for src2 in sources:
 
-			if not (src2 is src):
+            if not (src2 is src):
 
-				if dep in src2.procedures:
-					dep_obects.append(src2.object_name)
+                if dep in src2.procedures:
+                    dep_obects.append(src2.object_name)
 
-	# Get rid of duplicate object names
-	dep_obects = list(set(dep_obects))
+    # Get rid of duplicate object names
+    dep_obects = list(set(dep_obects))
 
-	# Update prerequisites section of compile rule and store in list
-	compile_rules.append(src.compile_rule_declr + ' '.join(dep_obects) + src.compile_rule)
+    # Update prerequisites section of compile rule and store in list
+    compile_rules.append(src.compile_rule_declr + ' '.join(dep_obects) + src.compile_rule)
 # --
 
 # Create makefile
@@ -262,20 +273,23 @@ makefile = '''
 # This makefile was generated by makemake.py.
 # 
 # Usage:
-# 'make':       Compiles with no compiler flags.
-# 'make debug': Compiles with flags useful for debugging.
-# 'make fast':  Compiles with flags for high performance.
-# 'make clean': Deletes auxiliary files.
+# 'make':         Compiles with no compiler flags.
+# 'make debug':   Compiles with flags useful for debugging.
+# 'make fast':    Compiles with flags for high performance.
+# 'make profile': Compiles with flags for profiling.
+# 'make gprof':   Displays the profiling results with gprof.
+# 'make clean':   Deletes auxiliary files.
 
 # Define variables
 COMP = %s
 EXECNAME = %s
 OBJECTS = %s
 MODULES = %s
-FLAGS = 
+COMP_FLAGS =
+LINK_FLAGS =
 
 # Make sure certain rules are not activated by the presence of files
-.PHONY: all debug fast set_debug_flags set_fast_flags clean
+.PHONY: all debug fast profile set_debug_flags set_fast_flags set_profile_flags gprof clean
 
 # Define default target group
 all: $(EXECNAME)
@@ -283,24 +297,34 @@ all: $(EXECNAME)
 # Define optional target groups
 debug: set_debug_flags $(EXECNAME)
 fast: set_fast_flags $(EXECNAME)
+profile: set_profile_flags $(EXECNAME)
 
 # Defines appropriate compiler flags for debugging
 set_debug_flags:
-	$(eval FLAGS = -Og -Wall -Wextra -Wconversion -pedantic -Wno-tabs -fbounds-check -ffpe-trap=zero,overflow)
+\t$(eval COMP_FLAGS = -Og -Wall -Wextra -Wconversion -pedantic -Wno-tabs -fbounds-check -ffpe-trap=zero,overflow)
 
 # Defines appropriate compiler flags for high performance
 set_fast_flags:
-	$(eval FLAGS = -O3)
+\t$(eval COMP_FLAGS = -O3)
+
+# Defines appropriate compiler flags for profiling
+set_profile_flags:
+\t$(eval COMP_FLAGS = -pg)
+\t$(eval LINK_FLAGS = -pg)
 
 # Rule for linking object files
 $(EXECNAME): $(OBJECTS)
-	$(COMP) -o $(EXECNAME) $(OBJECTS)%s
+\t$(COMP) $(LINK_FLAGS) -o $(EXECNAME) $(OBJECTS)%s
 
 # Action for removing all auxiliary files
 clean:
-	rm -f $(OBJECTS) $(MODULES)''' \
+\trm -f $(OBJECTS) $(MODULES)
+
+# Action for reading profiling results
+gprof:
+\tgprof $(EXECNAME)''' \
 % (compiler,
-   all_programs[0],
+   all_programs[0] + '.x',
    ' '.join([src.object_name for src in sources]),
    ' '.join(all_modules),
    ''.join(compile_rules))
@@ -311,19 +335,19 @@ writeFile = True
 
 if os.path.exists(makefilepath):
 
-	# Ask user before overwriting any existing makefiles
-	yn = ''
-	while not yn in ['y', 'n']:
-		yn = raw_input('(makemake.py) A makefile already exists. Overwrite? [Y/n]\n').lower()
+    # Ask user before overwriting any existing makefiles
+    yn = ''
+    while not yn in ['y', 'n']:
+        yn = raw_input('(makemake.py) A makefile already exists. Overwrite? [Y/n]\n').lower()
 
-	if yn == 'n':
+    if yn == 'n':
 
-		writeFile = False
-		print '(makemake.py) Makefile generation cancelled.'
+        writeFile = False
+        print '(makemake.py) Makefile generation cancelled.'
 
 if writeFile:
 
-	f = open(makefilepath, 'w')
-	f.write(makefile)
-	f.close()
-	print '(makemake.py) New makefile generated (%s).' % makefilepath
+    f = open(makefilepath, 'w')
+    f.write(makefile)
+    f.close()
+    print '(makemake.py) New makefile generated (%s).' % makefilepath
