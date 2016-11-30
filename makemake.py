@@ -5,7 +5,7 @@
 #
 # State: Functional
 #
-# Last modified 14.11.2016 by Lars Frogner
+# Last modified 30.11.2016 by Lars Frogner
 #
 import sys, os
 
@@ -131,7 +131,7 @@ class Source:
                     if dep[-1] == ',':
                         dep = dep[:-1]
 
-                    if dep != 'mpi':
+                    if dep != 'mpi' and dep != 'omp_lib':
                         self.mod_deps.append(dep + '.mod')
 
                 # Check for declaration of external procedure
@@ -168,10 +168,12 @@ class Source:
                             % (('\trm -f %s\n' % (' '.join(self.modules))) if len(self.modules) != 0 else '', 
                                filename_with_path)
 
-if len(sys.argv) < 2:
+def abort():
 
-    print '(makemake.py) Usage: makemake.py source1.f90 source2.f90 ...'
+    print '(makemake.py) Usage: makemake.py [-p mpi/openmp] [path1/]source1.f90 [path2/]source2.f90 ...'
     sys.exit(1)
+
+if len(sys.argv) < 2: abort()
 
 # Get path to the directory this script was run from
 source_path = os.getcwd()
@@ -181,10 +183,31 @@ command_arguments = sys.argv[1:]
 
 if '-p' in command_arguments:
 
+    idx = command_arguments.index('-p')
+
+    if len(command_arguments)-1 < idx+1: abort()
+
+    parallel_type = command_arguments[idx + 1]
+
+    if parallel_type == 'mpi':
+
+        compiler = 'mpif90'
+        parallel_flag = ''
+
+    elif parallel_type == 'openmp':
+
+        compiler = 'gfortran'
+        parallel_flag = '-fopenmp'
+
+    else:
+        abort()
+
     command_arguments.remove('-p')
-    compiler = 'mpif90'
+    command_arguments.remove(parallel_type)
+
 else:
     compiler = 'gfortran'
+    parallel_flag = ''
 # --
 
 # Read filenames from command line and turn them into Source instances
@@ -212,7 +235,6 @@ if len(all_programs) != 1:
     sys.exit()
 
 # -- Check for missing dependencies
-
 missing_mod_deps = []
 for dep in all_mod_deps:
     if not dep in all_modules: missing_mod_deps.append(dep)
@@ -230,6 +252,7 @@ if len(missing_proc_deps) != 0:
 
     print '(makemake.py) Missing procedure dependencies: %s' % ' '.join(missing_proc_deps)
     sys.exit(1)
+# --
 
 # -- Determine which objects each source depends on
 compile_rules = []
@@ -285,8 +308,8 @@ COMP = %s
 EXECNAME = %s
 OBJECTS = %s
 MODULES = %s
-COMP_FLAGS =
-LINK_FLAGS =
+COMP_FLAGS = %s
+LINK_FLAGS = %s
 
 # Make sure certain rules are not activated by the presence of files
 .PHONY: all debug fast profile set_debug_flags set_fast_flags set_profile_flags gprof clean
@@ -301,16 +324,16 @@ profile: set_profile_flags $(EXECNAME)
 
 # Defines appropriate compiler flags for debugging
 set_debug_flags:
-\t$(eval COMP_FLAGS = -Og -Wall -Wextra -Wconversion -pedantic -Wno-tabs -fbounds-check -ffpe-trap=zero,overflow)
+\t$(eval COMP_FLAGS = $(COMP_FLAGS) -Og -Wall -Wextra -Wconversion -pedantic -Wno-tabs -fbounds-check -ffpe-trap=zero,overflow)
 
 # Defines appropriate compiler flags for high performance
 set_fast_flags:
-\t$(eval COMP_FLAGS = -O3)
+\t$(eval COMP_FLAGS = $(COMP_FLAGS) -O3)
 
 # Defines appropriate compiler flags for profiling
 set_profile_flags:
-\t$(eval COMP_FLAGS = -pg)
-\t$(eval LINK_FLAGS = -pg)
+\t$(eval COMP_FLAGS = $(COMP_FLAGS) -pg)
+\t$(eval LINK_FLAGS = $(LINK_FLAGS) -pg)
 
 # Rule for linking object files
 $(EXECNAME): $(OBJECTS)
@@ -327,6 +350,8 @@ gprof:
    all_programs[0] + '.x',
    ' '.join([src.object_name for src in sources]),
    ' '.join(all_modules),
+   parallel_flag,
+   parallel_flag,
    ''.join(compile_rules))
 
 # -- Save makefile
@@ -338,7 +363,7 @@ if os.path.exists(makefilepath):
     # Ask user before overwriting any existing makefiles
     yn = ''
     while not yn in ['y', 'n']:
-        yn = raw_input('(makemake.py) A makefile already exists. Overwrite? [Y/n]\n').lower()
+        yn = raw_input('(makemake.py) A makefile already exists. Overwrite? [y/n]\n').lower()
 
     if yn == 'n':
 
@@ -351,3 +376,4 @@ if writeFile:
     f.write(makefile)
     f.close()
     print '(makemake.py) New makefile generated (%s).' % makefilepath
+# --
