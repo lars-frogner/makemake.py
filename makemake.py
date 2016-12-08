@@ -238,7 +238,7 @@ for dep in all_mod_deps:
 
 if len(missing_mod_deps) != 0:
 
-    print '(makemake.py) Missing module dependencies: %s' % ' '.join(missing_mod_deps)
+    print '(makemake.py) Missing module dependencies: %s' % ' '.join(list(set(missing_mod_deps)))
     sys.exit(1)
 
 missing_proc_deps = []
@@ -247,7 +247,7 @@ for dep in all_proc_deps:
 
 if len(missing_proc_deps) != 0:
 
-    print '(makemake.py) Missing procedure dependencies: %s' % ' '.join(missing_proc_deps)
+    print '(makemake.py) Missing procedure dependencies: %s' % ' '.join(list(set(missing_proc_deps)))
     sys.exit(1)
 # --
 
