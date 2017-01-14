@@ -1,4 +1,5 @@
 *
 !.gitignore
 !README.md
-!makemake.py
+!makemake_f.py
+!makemake_c.py
