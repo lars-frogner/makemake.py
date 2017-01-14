@@ -1,15 +1,6 @@
-#!/usr/bin/env python
-#
-# This program takes a list of Fortran files from the command line, 
-# and generates a makefile for building the corresponding executable.
-#
-# State: Functional
-#
-# Last modified 30.11.2016 by Lars Frogner
-#
 import sys, os
 
-class Source:
+class f90_source:
 
     # This class parses an inputted .f90 file and stores information
     # about which programs, modules, external procedures and 
@@ -183,116 +174,99 @@ class Source:
                             % (('\trm -f %s\n' % (' '.join(self.modules))) if len(self.modules) != 0 else '', 
                                filename_with_path)
 
-def abort():
+def generate_f90_makefile(source_list, source_path, use_openmp=False):
 
-    print '(makemake.py) Usage: makemake.py [-openmp] [path1/]source1.f90 [path2/]source2.f90 ...'
-    sys.exit(1)
+    use_mpi = False
 
-if len(sys.argv) < 2: abort()
+    # Read filenames from command line and turn them into f90_source instances
+    sources = [f90_source(source_path, filename) for filename in source_list]
 
-use_mpi = False
-use_openmp = False
+    # -- Collect all program, module, procedure and dependency names
+    all_programs = []
+    all_modules = []
+    all_procedures = []
+    all_mod_deps = []
+    all_proc_deps = []
 
-# Get path to the directory this script was run from
-source_path = os.getcwd()
+    for src in sources:
 
-command_args = sys.argv[1:]
+        all_programs += src.programs
+        all_modules += src.modules
+        all_procedures += src.procedures
+        all_mod_deps += src.mod_deps
+        all_proc_deps += src.proc_deps
 
-# Check if user says to use OpenMP
-if '-openmp' in command_args:
+        use_mpi = use_mpi or src.use_mpi
+        use_openmp = use_openmp or src.use_openmp
+    # --
 
-    use_openmp = True
-    command_args.remove('-openmp')
+    # Only one executable can be built
+    if len(all_programs) != 1:
+        print '(makemake.py) There must be exactly one program in all the sources combined.'
+        sys.exit()
 
-# Read filenames from command line and turn them into Source instances
-sources = [Source(source_path, filename) for filename in command_args]
+    # -- Check for missing dependencies
+    missing_mod_deps = []
+    for dep in all_mod_deps:
+        if not dep in all_modules: missing_mod_deps.append(dep)
 
-# -- Collect all program, module, procedure and dependency names
-all_programs = []
-all_modules = []
-all_procedures = []
-all_mod_deps = []
-all_proc_deps = []
+    if len(missing_mod_deps) != 0:
 
-for src in sources:
+        print '(makemake.py) Missing module dependencies: %s' % ' '.join(list(set(missing_mod_deps)))
+        sys.exit(1)
 
-    all_programs += src.programs
-    all_modules += src.modules
-    all_procedures += src.procedures
-    all_mod_deps += src.mod_deps
-    all_proc_deps += src.proc_deps
+    missing_proc_deps = []
+    for dep in all_proc_deps:
+        if not dep in all_procedures: missing_proc_deps.append(dep)
 
-    use_mpi = use_mpi or src.use_mpi
-    use_openmp = use_openmp or src.use_openmp
-# --
+    if len(missing_proc_deps) != 0:
 
-# Only one executable can be built
-if len(all_programs) != 1:
-    print '(makemake.py) There must be exactly one program in all the sources combined.'
-    sys.exit()
+        print '(makemake.py) Missing procedure dependencies: %s' % ' '.join(list(set(missing_proc_deps)))
+        sys.exit(1)
+    # --
 
-# -- Check for missing dependencies
-missing_mod_deps = []
-for dep in all_mod_deps:
-    if not dep in all_modules: missing_mod_deps.append(dep)
+    # -- Determine which objects each source depends on
+    compile_rules = []
 
-if len(missing_mod_deps) != 0:
+    # For each source
+    for src in sources:
 
-    print '(makemake.py) Missing module dependencies: %s' % ' '.join(list(set(missing_mod_deps)))
-    sys.exit(1)
+        dep_obects = []
 
-missing_proc_deps = []
-for dep in all_proc_deps:
-    if not dep in all_procedures: missing_proc_deps.append(dep)
+        # For each module dependency the source has
+        for dep in src.mod_deps:
 
-if len(missing_proc_deps) != 0:
+            # Loop through all the other sources
+            for src2 in sources:
 
-    print '(makemake.py) Missing procedure dependencies: %s' % ' '.join(list(set(missing_proc_deps)))
-    sys.exit(1)
-# --
+                if not (src2 is src):
 
-# -- Determine which objects each source depends on
-compile_rules = []
+                    # Add object name if it has the correct module
+                    if dep in src2.modules:
+                        dep_obects.append(src2.object_name)
 
-# For each source
-for src in sources:
+        # Repeat for procedure dependencies
+        for dep in src.proc_deps:
 
-    dep_obects = []
+            for src2 in sources:
 
-    # For each module dependency the source has
-    for dep in src.mod_deps:
+                if not (src2 is src):
 
-        # Loop through all the other sources
-        for src2 in sources:
+                    if dep in src2.procedures:
+                        dep_obects.append(src2.object_name)
 
-            if not (src2 is src):
+        # Get rid of duplicate object names
+        dep_obects = list(set(dep_obects))
 
-                # Add object name if it has the correct module
-                if dep in src2.modules:
-                    dep_obects.append(src2.object_name)
+        # Update prerequisites section of compile rule and store in list
+        compile_rules.append(src.compile_rule_declr + ' '.join(dep_obects) + src.compile_rule)
+    # --
 
-    # Repeat for procedure dependencies
-    for dep in src.proc_deps:
+    compiler = 'mpif90' if use_mpi else 'gfortran'
+    parallel_flag = '-fopenmp' if use_openmp else ''
 
-        for src2 in sources:
-
-            if not (src2 is src):
-
-                if dep in src2.procedures:
-                    dep_obects.append(src2.object_name)
-
-    # Get rid of duplicate object names
-    dep_obects = list(set(dep_obects))
-
-    # Update prerequisites section of compile rule and store in list
-    compile_rules.append(src.compile_rule_declr + ' '.join(dep_obects) + src.compile_rule)
-# --
-
-compiler = 'mpif90' if use_mpi else 'gfortran'
-parallel_flag = '-fopenmp' if use_openmp else ''
-
-# Create makefile
-makefile = '''
+    # Create makefile
+    makefile = '''
 # This makefile was generated by makemake.py.
 # GitHub repository: https://github.com/lars-frogner/makemake.py
 # 
@@ -347,34 +321,34 @@ clean:
 # Action for reading profiling results
 gprof:
 \tgprof $(EXECNAME)''' \
-% (compiler,
-   all_programs[0] + '.x',
-   ' '.join([src.object_name for src in sources]),
-   ' '.join(all_modules),
-   parallel_flag,
-   parallel_flag,
-   ''.join(compile_rules))
+    % (compiler,
+       all_programs[0] + '.x',
+       ' '.join([src.object_name for src in sources]),
+       ' '.join(all_modules),
+       parallel_flag,
+       parallel_flag,
+       ''.join(compile_rules))
 
-# -- Save makefile
-makefilepath = os.path.join(source_path, 'makefile')
-writeFile = True
+    # -- Save makefile
+    makefilepath = os.path.join(source_path, 'makefile')
+    writeFile = True
 
-if os.path.exists(makefilepath):
+    if os.path.exists(makefilepath):
 
-    # Ask user before overwriting any existing makefiles
-    yn = ''
-    while not yn in ['y', 'n']:
-        yn = raw_input('(makemake.py) A makefile already exists. Overwrite? [y/n]\n').lower()
+        # Ask user before overwriting any existing makefiles
+        yn = ''
+        while not yn in ['y', 'n']:
+            yn = raw_input('(makemake.py) A makefile already exists. Overwrite? [y/n]\n').lower()
 
-    if yn == 'n':
+        if yn == 'n':
 
-        writeFile = False
-        print '(makemake.py) Makefile generation cancelled.'
+            writeFile = False
+            print '(makemake.py) Makefile generation cancelled.'
 
-if writeFile:
+    if writeFile:
 
-    f = open(makefilepath, 'w')
-    f.write(makefile)
-    f.close()
-    print '(makemake.py) New makefile generated (%s).' % makefilepath
-# --
+        f = open(makefilepath, 'w')
+        f.write(makefile)
+        f.close()
+        print '(makemake.py) New makefile generated (%s).' % makefilepath
+    # --

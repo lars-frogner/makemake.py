@@ -1,17 +1,8 @@
-#!/usr/bin/env python
-#
-# This program takes a list of C files from the command line, 
-# and generates a makefile for building the corresponding executable.
-#
-# State: WIP
-#
-# Last modified 14.01.2017 by Lars Frogner
-#
 import sys, os
 
 std_headers = ['ctype.h', 'stdio.h', 'math.h', 'stdlib.h', 'string.h', 'time.h', 'stdarg.h']
 
-class Source:
+class c_source:
 
     # This class parses an inputted .c file and stores information
     # about which functions and dependencies it contains.
@@ -38,7 +29,7 @@ class Source:
         # -- Validate filename
         if name_parts[-1] != 'c' and name_parts[-1] != 'h':
 
-            print '(makemake_c.py) Invalid file extension for \"%s\".' % filename_with_path \
+            print '(makemake.py) Invalid file extension for \"%s\".' % filename_with_path \
                   + ' Must be \".c\" or \".h\".'
             sys.exit(1)
 
@@ -51,7 +42,7 @@ class Source:
 
         except IOError:
 
-            print '(makemake_c.py) Couldn\'t open file \"%s\".' % filename_with_path
+            print '(makemake.py) Couldn\'t open file \"%s\".' % filename_with_path
             sys.exit(1)
         # --
 
@@ -158,105 +149,88 @@ class Source:
                                      filename_with_path.replace(' ', '\ '))
         self.compile_rule = '\n\t$(COMP) -c $(COMP_FLAGS) \"%s\"' % filename_with_path
 
-def abort():
+def generate_c_makefile(source_list, source_path, use_openmp=False):
 
-    print '(makemake_c.py) Usage: makemake_c.py [-openmp] [path1/]source1.c [path2/]source2.c ...'
-    sys.exit(1)
+    use_mpi = False
 
-if len(sys.argv) < 2: abort()
+    # Read filenames from command line and turn them into c_source instances
+    sources = [c_source(source_path, filename) for filename in source_list]
 
-use_mpi = False
-use_openmp = False
+    # -- Collect all program, module, procedure and dependency names
+    all_headers = []
+    all_header_deps = []
 
-# Get path to the directory this script was run from
-source_path = os.getcwd()
+    main_source = None
 
-command_args = sys.argv[1:]
+    old_sources = list(sources)
 
-# Check if user says to use OpenMP
-if '-openmp' in command_args:
+    for src in old_sources:
 
-    use_openmp = True
-    command_args.remove('-openmp')
+        use_mpi = use_mpi or src.use_mpi
+        use_openmp = use_openmp or src.use_openmp
 
-# Read filenames from command line and turn them into Source instances
-sources = [Source(source_path, filename) for filename in command_args]
+        if src.is_main:
+            main_source = src
 
-# -- Collect all program, module, procedure and dependency names
-all_headers = []
-all_header_deps = []
+        all_header_deps += src.header_deps
 
-main_source = None
+        if src.is_header:
 
-old_sources = list(sources)
+            all_headers.append(src.filename)
+            sources.remove(src)
+    # --
 
-for src in old_sources:
+    # Only one executable can be built
+    if main_source is None:
+        print '(makemake.py) There must be exactly one main program in all the sources combined.'
+        sys.exit()
 
-    use_mpi = use_mpi or src.use_mpi
-    use_openmp = use_openmp or src.use_openmp
+    # -- Check for missing dependencies
+    missing_header_deps = []
+    for dep in all_header_deps:
+        if not dep in all_headers: missing_header_deps.append(dep)
 
-    if src.is_main:
-        main_source = src
+    if len(missing_header_deps) != 0:
 
-    all_header_deps += src.header_deps
+        print '(makemake.py) Missing header dependencies: %s' % ' '.join(list(set(missing_header_deps)))
+        sys.exit(1)
+    # --
 
-    if src.is_header:
+    # -- Determine which objects the main source depends on
+    compile_rules = []
 
-        all_headers.append(src.filename)
-        sources.remove(src)
-# --
+    # For each source
+    for src in sources:
 
-# Only one executable can be built
-if main_source is None:
-    print '(makemake_c.py) There must be exactly one main program in all the sources combined.'
-    sys.exit()
+        dep_obects = []
 
-# -- Check for missing dependencies
-missing_header_deps = []
-for dep in all_header_deps:
-    if not dep in all_headers: missing_header_deps.append(dep)
+        if src is main_source:
 
-if len(missing_header_deps) != 0:
+            # For each header dependency the source has
+            for dep in src.header_deps:
 
-    print '(makemake_c.py) Missing header dependencies: %s' % ' '.join(list(set(missing_header_deps)))
-    sys.exit(1)
-# --
+                # Loop through all the other sources
+                for src2 in sources:
 
-# -- Determine which objects the main source depends on
-compile_rules = []
+                    if not (src2 is src):
 
-# For each source
-for src in sources:
+                        # Add object name if it also has the same dependency
+                        if dep in src2.header_deps:
+                            dep_obects.append(src2.object_name)
 
-    dep_obects = []
+            # Get rid of duplicate object names
+            dep_obects = list(set(dep_obects))
 
-    if src is main_source:
+        # Update prerequisites section of compile rule and store in list
+        compile_rules.append(src.compile_rule_declr + ' '.join(dep_obects) + src.compile_rule)
+    # --
 
-        # For each header dependency the source has
-        for dep in src.header_deps:
+    compiler = 'mpicc' if use_mpi else 'gcc'
+    parallel_flag = '-fopenmp' if use_openmp else ''
 
-            # Loop through all the other sources
-            for src2 in sources:
-
-                if not (src2 is src):
-
-                    # Add object name if it also has the same dependency
-                    if dep in src2.header_deps:
-                        dep_obects.append(src2.object_name)
-
-        # Get rid of duplicate object names
-        dep_obects = list(set(dep_obects))
-
-    # Update prerequisites section of compile rule and store in list
-    compile_rules.append(src.compile_rule_declr + ' '.join(dep_obects) + src.compile_rule)
-# --
-
-compiler = 'mpicc' if use_mpi else 'gcc'
-parallel_flag = '-fopenmp' if use_openmp else ''
-
-# Create makefile
-makefile = '''
-# This makefile was generated by makemake_c.py.
+    # Create makefile
+    makefile = '''
+# This makefile was generated by makemake.py.
 # GitHub repository: https://github.com/lars-frogner/makemake.py
 # 
 # Usage:
@@ -309,33 +283,33 @@ clean:
 # Action for reading profiling results
 gprof:
 \tgprof $(EXECNAME)''' \
-% (compiler,
-   main_source.name + '.x',
-   ' '.join([src.object_name for src in sources]),
-   parallel_flag,
-   parallel_flag,
-   ''.join(compile_rules))
+    % (compiler,
+       main_source.name + '.x',
+       ' '.join([src.object_name for src in sources]),
+       parallel_flag,
+       parallel_flag,
+       ''.join(compile_rules))
 
-# -- Save makefile
-makefilepath = os.path.join(source_path, 'makefile')
-writeFile = True
+    # -- Save makefile
+    makefilepath = os.path.join(source_path, 'makefile')
+    writeFile = True
 
-if os.path.exists(makefilepath):
+    if os.path.exists(makefilepath):
 
-    # Ask user before overwriting any existing makefiles
-    yn = ''
-    while not yn in ['y', 'n']:
-        yn = raw_input('(makemake_c.py) A makefile already exists. Overwrite? [y/n]\n').lower()
+        # Ask user before overwriting any existing makefiles
+        yn = ''
+        while not yn in ['y', 'n']:
+            yn = raw_input('(makemake.py) A makefile already exists. Overwrite? [y/n]\n').lower()
 
-    if yn == 'n':
+        if yn == 'n':
 
-        writeFile = False
-        print '(makemake_c.py) Makefile generation cancelled.'
+            writeFile = False
+            print '(makemake.py) Makefile generation cancelled.'
 
-if writeFile:
+    if writeFile:
 
-    f = open(makefilepath, 'w')
-    f.write(makefile)
-    f.close()
-    print '(makemake_c.py) New makefile generated (%s).' % makefilepath
-# --
+        f = open(makefilepath, 'w')
+        f.write(makefile)
+        f.close()
+        print '(makemake.py) New makefile generated (%s).' % makefilepath
+    # --
