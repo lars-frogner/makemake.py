@@ -1,5 +1,1 @@
-*
-!.gitignore
-!README.md
-!makemake_f.py
-!makemake_c.py
+*.pyc
