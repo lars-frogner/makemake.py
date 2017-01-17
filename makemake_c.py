@@ -261,11 +261,11 @@ profile: set_profile_flags $(EXECNAME)
 
 # Defines appropriate compiler flags for debugging
 set_debug_flags:
-\t$(eval COMP_FLAGS = $(COMP_FLAGS) -Og -Wall -Wextra -Wconversion -pedantic -fbounds-check)
+\t$(eval COMP_FLAGS = $(COMP_FLAGS) -Og -W -Wall -fno-common -Wcast-align -Wredundant-decls -Wbad-function-cast -Wwrite-strings -Waggregate-return -Wstrict-prototypes -Wmissing-prototypes -Wextra -Wconversion -pedantic -fbounds-check)
 
 # Defines appropriate compiler flags for high performance
 set_fast_flags:
-\t$(eval COMP_FLAGS = $(COMP_FLAGS) -O3)
+\t$(eval COMP_FLAGS = $(COMP_FLAGS) -O3 -ffast-math)
 
 # Defines appropriate compiler flags for profiling
 set_profile_flags:
