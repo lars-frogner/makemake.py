@@ -14,7 +14,7 @@ std_headers = ['assert.h',
                'stdio.h', 
                'stdlib.h', 
                'string.h', 
-               'time.h'
+               'time.h',
                'complex.h', 
                'fenv.h', 
                'inttypes.h', 
@@ -58,7 +58,6 @@ class c_source:
 
         try:
             if has_abs_path:
-                print os.path.join(file_path, self.filename)
                 f = open(os.path.join(file_path, self.filename), 'r')
             else:
                 f = open(os.path.join(path, self.filename), 'r')
@@ -165,6 +164,11 @@ class c_source:
             elif first_word == 'int' and '(' in second_word and second_word.split('(')[0] == 'main' and not self.is_header:
                 self.is_main = True
 
+        if self.is_header and has_abs_path:
+            self.header_path = ['-I \"%s\"' % file_path]
+        else:
+            self.header_path = []
+
         # Compilation rule for the makefile
         self.compile_rule_declr = '\n\n%s\n%s: %s ' \
                                   % ('# Rule for compiling ' + self.filename,
@@ -182,6 +186,7 @@ def generate_c_makefile(source_list, source_path, use_openmp=False):
     # -- Collect all program, module, procedure and dependency names
     all_headers = []
     all_header_deps = []
+    all_header_paths = []
 
     main_source = None
 
@@ -196,6 +201,7 @@ def generate_c_makefile(source_list, source_path, use_openmp=False):
             main_source = src
 
         all_header_deps += src.header_deps
+        all_header_paths += src.header_path
 
         if src.is_header:
 
@@ -250,6 +256,9 @@ def generate_c_makefile(source_list, source_path, use_openmp=False):
 
     compiler = 'mpicc' if use_mpi else 'gcc'
     parallel_flag = '-fopenmp' if use_openmp else ''
+
+    compilation_flag = parallel_flag + ' '.join(all_header_paths)
+    linking_flag = parallel_flag
 
     # Create makefile
     makefile = '''
@@ -309,8 +318,8 @@ gprof:
     % (compiler,
        main_source.name + '.x',
        ' '.join([src.object_name for src in sources]),
-       parallel_flag,
-       parallel_flag,
+       compilation_flag,
+       linking_flag,
        ''.join(compile_rules))
 
     # -- Save makefile
