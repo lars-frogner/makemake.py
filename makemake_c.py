@@ -1,6 +1,6 @@
 import sys, os
 
-std_headers = ['ctype.h', 'stdio.h', 'math.h', 'stdlib.h', 'string.h', 'time.h', 'stdarg.h']
+std_headers = ['ctype.h', 'stdio.h', 'math.h', 'stdlib.h', 'string.h', 'time.h', 'stdarg.h', 'assert.h', 'errno.h', 'float.h', 'limits.h', 'locale.h', 'setjmp.h', 'signal.h', 'stddef.h', 'complex.h']
 
 class c_source:
 
