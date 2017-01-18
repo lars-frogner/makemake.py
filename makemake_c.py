@@ -1,6 +1,29 @@
 import sys, os
 
-std_headers = ['ctype.h', 'stdio.h', 'math.h', 'stdlib.h', 'string.h', 'time.h', 'stdarg.h', 'assert.h', 'errno.h', 'float.h', 'limits.h', 'locale.h', 'setjmp.h', 'signal.h', 'stddef.h', 'complex.h']
+std_headers = ['assert.h', 
+               'ctype.h', 
+               'errno.h', 
+               'float.h', 
+               'limits.h', 
+               'locale.h', 
+               'math.h', 
+               'setjmp.h', 
+               'signal.h', 
+               'stdarg.h', 
+               'stddef.h', 
+               'stdio.h', 
+               'stdlib.h', 
+               'string.h', 
+               'time.h'
+               'complex.h', 
+               'fenv.h', 
+               'inttypes.h', 
+               'iso646.h', 
+               'stdbool.h', 
+               'stdint.h', 
+               'tgmath.h', 
+               'wchar.h', 
+               'wctype.h']
 
 class c_source:
 
