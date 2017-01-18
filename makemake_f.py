@@ -29,7 +29,6 @@ class f90_source:
 
         try:
             if has_abs_path:
-                print os.path.join(file_path, filename)
                 f = open(os.path.join(file_path, filename), 'r')
             else:
                 f = open(os.path.join(path, filename), 'r')
