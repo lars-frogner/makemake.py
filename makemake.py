@@ -6,7 +6,7 @@
 #
 # State: Functional
 #
-# Last modified 01.02.2017 by Lars Frogner
+# Last modified 02.02.2017 by Lars Frogner
 #
 import sys, os
 
