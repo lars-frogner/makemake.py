@@ -53,6 +53,8 @@ def search_for_file(file_string, working_dir_path, search_paths):
 
     has_specified_path = len(specified_path.strip()) > 0
 
+    print '\n%s:' % filename
+
     if has_specified_path:
 
         # Search specified path for the file
@@ -60,7 +62,7 @@ def search_for_file(file_string, working_dir_path, search_paths):
         if specified_path[:2] == './':
             specified_path = os.path.join(working_dir_path, specified_path[2:])
 
-        sys.stdout.write('Searching for \"%s\" in \"%s\"...' % (filename, specified_path))
+        sys.stdout.write('Searching in \"%s\"...' % specified_path)
         sys.stdout.flush()
 
         filename_with_path = os.path.join(specified_path, filename)
@@ -76,7 +78,7 @@ def search_for_file(file_string, working_dir_path, search_paths):
 
         path = working_dir_path
 
-        sys.stdout.write('Searching for \"%s\" in working directory...' % filename)
+        sys.stdout.write('Searching in working directory...')
         sys.stdout.flush()
 
         filename_with_path = os.path.join(working_dir_path, filename)
@@ -94,7 +96,7 @@ def search_for_file(file_string, working_dir_path, search_paths):
                 if path[:2] == './':
                     path = os.path.join(working_dir_path, path[2:])
 
-                sys.stdout.write('Searching for \"%s\" in \"%s\"...' % (filename, path))
+                sys.stdout.write('Searching in \"%s\"...' % path)
                 sys.stdout.flush()
 
                 filename_with_path = os.path.join(path, filename)
@@ -154,3 +156,112 @@ def save_makefile(makefile, working_dir_path):
     f.write(makefile)
     f.close()
     print 'New makefile saved as \"%s\"' % filename
+
+class cycle_resolver:
+
+    def resolve_cycles(self, nodes):
+
+        self.nodes = nodes.copy()
+        self.ignore_cycles = []
+
+        while True:
+
+            self.run_depth_first_traversal()
+
+            if len(self.cycle_nodes_list) > 0:
+
+                self.fix_cycle()
+
+            else:
+
+                break
+
+        return self.nodes
+
+    def run_depth_first_traversal(self):
+
+        self.cycle_nodes_list = []
+        self.cycle_nodes = []
+        self.visited = {}
+        self.start = {}
+
+        for node in self.nodes:
+
+            self.visited[node] = False
+            self.start[node] = False
+
+        for node in self.nodes:
+
+            self.start_node = node
+            self.depth_first_traversal(node, is_not_first=False)
+            self.start[node] = True
+
+        self.cycle_nodes_list = sorted(self.cycle_nodes_list, key=len)
+
+    def depth_first_traversal(self, node, is_not_first=True):
+
+        if not self.start[node]:
+
+            if self.visited[node]:
+
+                if node == self.start_node:
+
+                    cycle_nodes_complete = [node] + self.cycle_nodes
+
+                    if not cycle_nodes_complete in self.ignore_cycles:
+                        self.cycle_nodes_list.append(cycle_nodes_complete)
+
+            else:
+
+                self.visited[node] = True
+
+                for child in self.nodes[node]:
+
+                    if is_not_first:
+                        self.cycle_nodes.append(node)
+
+                    self.depth_first_traversal(child)
+
+                    self.cycle_nodes = self.cycle_nodes[:-1]
+
+                self.visited[node] = False
+
+    def fix_cycle(self):
+
+        for cycle_nodes in self.cycle_nodes_list:
+
+            idx_list = range(1, len(cycle_nodes)+1)
+            idx_str_list = [str(i) for i in idx_list]
+            ans_list = idx_str_list + ['a', 'i']
+
+            print '\nWarning: circular dependency detected:\n%s( <-%s ...)' \
+                  % (' <- '.join([node.filename for node in cycle_nodes]), cycle_nodes[0].filename)
+
+            ans = ''
+            while not ans in ans_list:
+                ans = raw_input('Which dependency to drop? [<n>: drop file # n <-, a: abort, i: ignore]\n').lower()
+
+            if ans in idx_str_list:
+
+                idx1 = int(ans)-1
+                idx2 = idx1 + 1 if idx1 < len(cycle_nodes) - 1 else 0
+
+                parent = cycle_nodes[idx1]
+                child = cycle_nodes[idx2]
+
+                print 'Dropping dependency \"%d\"<-\"%d\"' % (parent.filename, child.filename)
+
+                self.nodes[parent].remove(child)
+
+            elif ans == 'a':
+
+                abort()
+
+            elif ans == 'i':
+
+                print 'Ignoring circular dependency'
+                self.ignore_cycles.append(cycle_nodes)
+
+                continue
+
+            break
