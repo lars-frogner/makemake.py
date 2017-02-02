@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 01.02.2017 by Lars Frogner
+# Last modified 02.02.2017 by Lars Frogner
 #
 import sys, os
 import makemake_lib
@@ -239,12 +239,8 @@ class c_source:
 
         print ' Done'
 
-        sys.stdout.write('Included (non-standard) headers:')
-        sys.stdout.flush()
         if len(self.included_headers) > 0:
-            print '\n' + '\n'.join([('%s' % header_name) for header_name in self.included_headers])
-        else:
-            print ' None'
+            print 'Included (non-standard) headers:\n' + '\n'.join([('-%s' % header_name) for header_name in self.included_headers])
 
         self.clean_text = remove_preprocessor_directives(text)
 
@@ -286,19 +282,11 @@ class c_header:
 
         print ' Done'
 
-        sys.stdout.write('Included (non-standard) headers:')
-        sys.stdout.flush()
         if len(self.included_headers) > 0:
-            print '\n' + '\n'.join([('%s' % header_name) for header_name in self.included_headers])
-        else:
-            print ' None'
+            print 'Included (non-standard) headers:\n' + '\n'.join([('-%s' % header_name) for header_name in self.included_headers])
 
-        sys.stdout.write('Declared functions:')
-        sys.stdout.flush()
         if len(self.declared_functions) > 0:
-            print '\n' + '\n'.join([('%s' % function_name) for function_name in self.declared_functions])
-        else:
-            print ' None'
+            print 'Declared functions:\n' + '\n'.join([('-%s' % function_name) for function_name in self.declared_functions])
 
 def process_files(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files):
 
@@ -549,7 +537,7 @@ def determine_object_dependencies(source_objects, header_objects):
         
         else:
         
-            print '\n%s:\n%s' % (source.filename, '\n'.join(['- %s' % (src.filename) for src in object_dependencies[source]]))
+            print '\n%s:\n%s' % (source.filename, '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]]))
 
     # Convert values from c_source instances to object names
 

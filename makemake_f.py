@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 01.02.2017 by Lars Frogner
+# Last modified 02.02.2017 by Lars Frogner
 #
 import sys, os
 import makemake_lib
@@ -162,7 +162,8 @@ class f90_source:
         self.name = '.'.join(self.filename.split('.')[:-1])
         self.object_name = self.name + '.o'
 
-        print 'Parsing \"%s\"...' % (self.filename)
+        sys.stdout.write('Parsing ...')
+        sys.stdout.flush()
 
         f = open(filename_with_path, 'r')
         lines = f.readlines()
@@ -173,13 +174,22 @@ class f90_source:
         self.main_program = None if len(programs) == 0 else programs[0]
         if len(programs) > 1: abort_multiple_programs(self.filename, programs)
 
+        print ' Done'
+
+        if not (self.main_program is None):
+            print 'Contained programs:\n-' + self.main_program
+
+        if len(self.modules) > 0:
+            print 'Contained modules:\n' + '\n'.join([('-%s' % module_name.split('.')[0]) for module_name in self.modules])
+
+        if len(self.procedures) > 0:
+            print 'Contained external procedures:\n' + '\n'.join([('-%s' % procedure_name) for procedure_name in self.procedures])
+
         if len(self.module_dependencies) > 0:
-            print 'Modules used by \"%s\":\n%s' \
-                  % (self.filename, '\n'.join([('- %s' % module_name.split('.')[0]) for module_name in self.module_dependencies]))
+            print 'Used modules:\n' + '\n'.join([('-%s' % module_name.split('.')[0]) for module_name in self.module_dependencies])
 
         if len(self.procedure_dependencies) > 0:
-            print 'External procedures used by \"%s\":\n%s' \
-                  % (self.filename, '\n'.join([('- %s' % procedure_name) for procedure_name in self.procedure_dependencies]))
+            print 'Used external procedures:\n' + '\n'.join([('-%s' % procedure_name) for procedure_name in self.procedure_dependencies])
 
         # Compilation rule for the makefile
         self.compile_rule_declr = '\n\n%s\n%s%s: %s%s ' \
@@ -335,19 +345,23 @@ def determine_object_dependencies(source_objects):
         # Get rid of duplicate object names
         object_dependencies[source] = list(set(object_dependencies[source]))
 
+    # Fix circular dependencies
+
+    object_dependencies = makemake_lib.cycle_resolver().resolve_cycles(object_dependencies)
+
     # Print dependency list
 
-    print 'Source dependencies:'
+    print '\nSource dependencies:'
 
     for source in sorted(object_dependencies, key=lambda source: len(object_dependencies[source]), reverse=True):
 
         if len(object_dependencies[source]) == 0:
 
-            print '%s: None' % (source.filename)
+            print '\n%s: None' % (source.filename)
         
         else:
         
-            print '%s:\n%s' % (source.filename, '\n'.join(['- %s' % (src.filename) for src in object_dependencies[source]]))
+            print '\n%s:\n%s' % (source.filename, '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]]))
 
     # Convert values from f90_source instances to object names
 
@@ -380,7 +394,7 @@ def generate_f90_makefile(working_dir_path, source_paths, source_files, force_op
 
     # Get information from files
 
-    print 'Collecting files...'
+    print '\nCollecting files...'
 
     source_objects = process_files(working_dir_path, 
                                    source_paths, 
@@ -389,13 +403,13 @@ def generate_f90_makefile(working_dir_path, source_paths, source_files, force_op
     main_source, use_mpi, use_openmp = gather_source_information(source_objects, 
                                                                  force_openmp)
 
-    print 'Examining dependencies...'
+    print '\nExamining dependencies...'
 
     all_modules = validate_dependencies(source_objects)
 
     object_dependencies = determine_object_dependencies(source_objects)
 
-    print 'Generating makefile text...'
+    print '\nGenerating makefile text...'
 
     compile_rule_string = gather_compile_rules(source_objects, 
                                                object_dependencies)
