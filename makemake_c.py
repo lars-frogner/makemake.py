@@ -226,7 +226,8 @@ class c_source:
         self.name = '.'.join(self.filename.split('.')[:-1])
         self.object_name = self.name + '.o'
 
-        print 'Parsing \"%s\"...' % (self.filename)
+        sys.stdout.write('Parsing ...')
+        sys.stdout.flush()
 
         f = open(filename_with_path, 'r')
         text = f.read()
@@ -236,9 +237,14 @@ class c_source:
 
         self.included_headers, self.use_math, self.use_mpi, self.use_openmp, self.is_main = get_included_headers(text)
 
+        print ' Done'
+
+        sys.stdout.write('Included (non-standard) headers:')
+        sys.stdout.flush()
         if len(self.included_headers) > 0:
-            print 'Non-standard headers included by \"%s\":\n%s' \
-                  % (self.filename, '\n'.join([('- %s' % header_name) for header_name in self.included_headers]))
+            print '\n' + '\n'.join([('%s' % header_name) for header_name in self.included_headers])
+        else:
+            print ' None'
 
         self.clean_text = remove_preprocessor_directives(text)
 
@@ -263,7 +269,8 @@ class c_header:
 
         self.filename = filename_with_path.split('/')[-1]
 
-        print 'Parsing \"%s\"...' % (self.filename)
+        sys.stdout.write('Parsing ...')
+        sys.stdout.flush()
 
         f = open(filename_with_path, 'r')
         text = f.read()
@@ -273,35 +280,31 @@ class c_header:
 
         self.included_headers, self.use_math, self.use_mpi, self.use_openmp = get_included_headers(text)[:4]
 
-        if len(self.included_headers) > 0:
-            print 'Non-standard headers included by \"%s\":\n%s' \
-                  % (self.filename, '\n'.join([('- %s' % header_name) for header_name in self.included_headers]))
-
         text = remove_preprocessor_directives(text)
 
         self.declared_functions = get_declared_functions(text)
 
+        print ' Done'
+
+        sys.stdout.write('Included (non-standard) headers:')
+        sys.stdout.flush()
+        if len(self.included_headers) > 0:
+            print '\n' + '\n'.join([('%s' % header_name) for header_name in self.included_headers])
+        else:
+            print ' None'
+
+        sys.stdout.write('Declared functions:')
+        sys.stdout.flush()
         if len(self.declared_functions) > 0:
-            print 'Functions declared in \"%s\":\n%s' \
-                  % (self.filename, '\n'.join([('- %s' % function_name) for function_name in self.declared_functions]))
+            print '\n' + '\n'.join([('%s' % function_name) for function_name in self.declared_functions])
+        else:
+            print ' None'
 
 def process_files(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files):
 
     # This function creates lists of c_source and c_header instances
     # from the given lists of filenames and paths. It also updates
     # the lists of header and library paths.
-
-    # Process source files
-
-    source_objects = []
-
-    for file_string in source_files:
-
-        filename_with_path = makemake_lib.search_for_file(file_string, 
-                                                          working_dir_path, 
-                                                          source_paths)[0]
-
-        source_objects.append(c_source(filename_with_path))
 
     # Process header files
 
@@ -320,6 +323,18 @@ def process_files(working_dir_path, source_paths, header_paths, library_paths, s
             extra_header_paths.append(specified_path)
 
     header_paths = list(set(header_paths + extra_header_paths))
+
+    # Process source files
+
+    source_objects = []
+
+    for file_string in source_files:
+
+        filename_with_path = makemake_lib.search_for_file(file_string, 
+                                                          working_dir_path, 
+                                                          source_paths)[0]
+
+        source_objects.append(c_source(filename_with_path))
 
     # Process library files
 
@@ -518,68 +533,23 @@ def determine_object_dependencies(source_objects, header_objects):
 
         object_dependencies[source] = list(set(object_dependencies[source]))
 
-    # Check for circular dependencies
+    # Fix circular dependencies
 
-    '''
-
-    removes = {}
-    resolved = []
-
-    for source in object_dependencies:
-
-        if not source in removes: removes[source] = []
-
-        for dep_source in object_dependencies[source]:
-
-            for dep_dep_source in object_dependencies[dep_source]:
-
-                if source is dep_dep_source and not (dep_source, source) in resolved:
-
-                    print 'Warning: circular dependency between \"%s\" (1) and \"%s\" (2)' \
-                          % (source.filename, dep_source.filename)
-
-                    ans = ''
-                    while not ans in ['1', '2', 'a', 'i']:
-                        ans = raw_input('How to proceed? [1 [2]: drop 1 <- 2 [2 <- 1] dependency, a: abort, i: ignore]\n').lower()
-
-                    if ans == '1':
-
-                        print 'Dependecy of \"%s\" on \"%s\" dropped' % (source.filename, dep_source.filename)
-                        removes[source].append(dep_source)
-
-                    elif ans == '2':
-
-                        print 'Dependecy of \"%s\" on \"%s\" dropped' % (dep_source.filename, source.filename)
-                        removes[dep_source].append(source)
-
-                    elif ans == 'a':
-
-                        makemake_lib.abort()
-
-                    resolved.append((source, dep_source))
-
-                    break
-
-    for source in removes:
-
-        for dep_source in removes[source]:
-
-            object_dependencies[source].remove(dep_source)
-    '''
+    object_dependencies = makemake_lib.cycle_resolver().resolve_cycles(object_dependencies)
 
     # Print dependency list
 
-    print 'Source dependencies:'
+    print '\nSource dependencies:'
 
     for source in sorted(object_dependencies, key=lambda source: len(object_dependencies[source]), reverse=True):
 
         if len(object_dependencies[source]) == 0:
 
-            print '%s: None' % (source.filename)
+            print '\n%s: None' % (source.filename)
         
         else:
         
-            print '%s:\n%s' % (source.filename, '\n'.join(['- %s' % (src.filename) for src in object_dependencies[source]]))
+            print '\n%s:\n%s' % (source.filename, '\n'.join(['- %s' % (src.filename) for src in object_dependencies[source]]))
 
     # Convert values from c_source instances to object names
 
@@ -615,7 +585,7 @@ def generate_makefile(working_dir_path, source_paths, header_paths, library_path
 
     # Get information from files
 
-    print 'Collecting files...'
+    print '\nCollecting files...'
 
     source_objects, header_objects, header_paths, library_paths = process_files(working_dir_path, 
                                                                                 source_paths, 
@@ -629,7 +599,7 @@ def generate_makefile(working_dir_path, source_paths, header_paths, library_path
                                                                            header_objects, 
                                                                            force_openmp)
 
-    print 'Examining dependencies...'
+    print '\nExamining dependencies...'
 
     header_dependencies = determine_header_dependencies(source_objects, 
                                                         header_objects)
@@ -637,7 +607,7 @@ def generate_makefile(working_dir_path, source_paths, header_paths, library_path
     object_dependencies = determine_object_dependencies(source_objects, 
                                                             header_objects)
 
-    print 'Generating makefile text...'
+    print '\nGenerating makefile text...'
 
     compile_rule_string = gather_compile_rules(source_objects, 
                                                header_dependencies, 
