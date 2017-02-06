@@ -93,9 +93,6 @@ def search_for_file(file_string, working_dir_path, search_paths):
 
             for path in search_paths:
 
-                if path[:2] == './':
-                    path = os.path.join(working_dir_path, path[2:])
-
                 sys.stdout.write('Searching in \"%s\"...' % path)
                 sys.stdout.flush()
 
@@ -116,7 +113,7 @@ def search_for_file(file_string, working_dir_path, search_paths):
         else:
             print ' Found'
             
-    return filename_with_path, has_specified_path, specified_path
+    return filename_with_path, has_specified_path, specified_path, filename
 
 class cycle_resolver:
 
