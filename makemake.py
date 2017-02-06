@@ -151,6 +151,13 @@ def detect_language(arg_list, valid_fortran_endings, valid_c_endings):
 if len(sys.argv) < 2:
     abort_usage()
 
+def convert_relative_paths(working_dir_path, paths):
+
+    for i in xrange(len(paths)):
+
+        if paths[i][:2] == './':
+            paths[i] = os.path.join(working_dir_path, paths[i][2:])
+
 combinable_flags = ['S', 'H', 'L']
 incombinable_flags = ['w', 'c']
 
@@ -171,6 +178,10 @@ compiler = None if not ('c' in flag_args) else flag_args['c']
 source_paths = [] if not ('S' in flag_args) else flag_args['S']
 header_paths = [] if not ('H' in flag_args) else flag_args['H']
 library_paths = [] if not ('L' in flag_args) else flag_args['L']
+
+convert_relative_paths(working_dir_path, source_paths)
+convert_relative_paths(working_dir_path, header_paths)
+convert_relative_paths(working_dir_path, library_paths)
 
 language = detect_language(arg_list, valid_fortran_endings, valid_c_endings)
 
