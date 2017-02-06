@@ -6,13 +6,32 @@
 #
 # State: Functional
 #
-# Last modified 02.02.2017 by Lars Frogner
+# Last modified 06.02.2017 by Lars Frogner
 #
 import sys, os
 
 def abort_usage():
 
-    print 'Usage:\nmakemake.py <list of source files> ...'
+    print '''Usage:
+makemake.py <flags> <source files>
+
+Separate arguments with spaces. Surround arguments that contain
+spaces with double quotes. Source files lying in another directory 
+can be prepended with their absoulte path (from /) or relative path 
+(from ./).
+
+Flags:
+'-c <compiler name>': Specifies which compiler to use (default is GCC 
+                      compilers).
+'-w':                 Generates a wrapper for all .mk files in the 
+                      directory.
+'-S <paths>':         Specifies search paths to use for source files.
+'-H <paths>':         Specifies search paths to use for header files 
+                      (C only).
+'-L <paths>':         Specifies search paths to use for library files 
+                      (C only).
+
+The S, H and L flags can be combined arbitrarily (e.g. -SH or -LSH).'''
     sys.exit(1)
 
 def abort_language():
@@ -127,18 +146,15 @@ def detect_language(arg_list, valid_fortran_endings, valid_c_endings):
         else:
             abort_ending(filename)
 
-    if language is None:
-        abort_language()
-
     return language
 
 if len(sys.argv) < 2:
     abort_usage()
 
 combinable_flags = ['S', 'H', 'L']
-incombinable_flags = ['openmp']
+incombinable_flags = ['w', 'c']
 
-valid_fortran_endings = ['f90']
+valid_fortran_endings = ['f90', 'f95', 'f03', 'f', 'for', 'F', 'F90']
 valid_c_endings = ['c', 'h', 'a', 'so']
 valid_file_endings = valid_fortran_endings + valid_c_endings
 
@@ -150,7 +166,8 @@ arg_list = sys.argv[1:]
 flag_args = extract_flag_args(arg_list, valid_file_endings)
 flag_args = separate_flags(flag_args, combinable_flags, incombinable_flags)
 
-force_openmp = 'openmp' in flag_args
+generate_wrapper = 'w' in flag_args
+compiler = None if not ('c' in flag_args) else flag_args['c']
 source_paths = [] if not ('S' in flag_args) else flag_args['S']
 header_paths = [] if not ('H' in flag_args) else flag_args['H']
 library_paths = [] if not ('L' in flag_args) else flag_args['L']
@@ -164,7 +181,7 @@ if language == 'fortran':
 
     source_files = arg_list
 
-    makemake_f.generate_f90_makefile(working_dir_path, source_paths, source_files, force_openmp)
+    makemake_f.generate_fortran_makefile(working_dir_path, source_paths, source_files, compiler)
 
 elif language == 'c':
 
@@ -194,7 +211,12 @@ elif language == 'c':
                                  source_files, 
                                  header_files, 
                                  library_files, 
-                                 force_openmp)
+                                 compiler)
 
-else:
-    abort_language()
+elif not generate_wrapper:
+    abort_usage()
+
+if generate_wrapper:
+
+    import makemake_lib
+    makemake_lib.generate_wrapper(working_dir_path)
