@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 02.02.2017 by Lars Frogner
+# Last modified 06.02.2017 by Lars Frogner
 #
 import sys, os
 import makemake_lib
@@ -39,6 +39,9 @@ def parse_lines(lines):
 
         # Skip blank lines
         if len(words.split()) == 0: continue
+
+        # Skip commented lines
+        if words[0][0] in ['c', 'C', '*']: continue
 
         # If line is continued
         if words.strip()[-1] == '&': 
@@ -144,11 +147,14 @@ def parse_lines(lines):
     for dep in list(procedure_dependencies):
         if dep in procedures: procedure_dependencies.remove(dep)
 
+    module_dependencies = list(set(module_dependencies))
+    procedure_dependencies = list(set(procedure_dependencies))
+
     return programs, modules, procedures, module_dependencies, procedure_dependencies, use_mpi, use_openmp
 
-class f90_source:
+class fortran_source:
 
-    # This class parses an inputted .f90 file and stores information
+    # This class parses an inputted Fortran file and stores information
     # about which programs, modules, external procedures and 
     # dependencies it contains.
 
@@ -191,6 +197,12 @@ class f90_source:
         if len(self.procedure_dependencies) > 0:
             print 'Used external procedures:\n' + '\n'.join([('-%s' % procedure_name) for procedure_name in self.procedure_dependencies])
 
+        if self.use_mpi:
+            print 'Uses MPI'
+
+        if self.use_openmp:
+            print 'Uses OpenMP'
+
         # Compilation rule for the makefile
         self.compile_rule_declr = '\n\n%s\n%s%s: %s%s ' \
                                   % ('# Rule for compiling ' + self.filename,
@@ -205,7 +217,7 @@ class f90_source:
 
 def process_files(working_dir_path, source_paths, source_files):
 
-    # This function creates lists of f90_source instances from the given 
+    # This function creates lists of fortran_source instances from the given 
     # lists of filenames and paths.
 
     source_objects = []
@@ -216,16 +228,16 @@ def process_files(working_dir_path, source_paths, source_files):
                                                           working_dir_path, 
                                                           source_paths)[0]
 
-        source_objects.append(f90_source(filename_with_path))
+        source_objects.append(fortran_source(filename_with_path))
 
     return source_objects
 
-def gather_source_information(source_objects, force_openmp):
+def gather_source_information(source_objects):
 
     # This function collects the information about the individual sources.
 
     use_mpi = False
-    use_openmp = force_openmp
+    use_openmp = False
 
     main_source = None
 
@@ -309,7 +321,7 @@ def validate_dependencies(source_objects):
 
 def determine_object_dependencies(source_objects):
 
-    # This function creates a dictionary with the f90_source objects
+    # This function creates a dictionary with the fortran_source objects
     # as keys. The values are lists of object names for the other
     # sources that implement modules and procedures that the source uses.
 
@@ -363,7 +375,7 @@ def determine_object_dependencies(source_objects):
         
             print '\n%s:\n%s' % (source.filename, '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]]))
 
-    # Convert values from f90_source instances to object names
+    # Convert values from fortran_source instances to object names
 
     for source in object_dependencies:
 
@@ -387,7 +399,7 @@ def gather_compile_rules(source_objects, object_dependencies):
 
     return ''.join(compile_rules)
 
-def generate_f90_makefile(working_dir_path, source_paths, source_files, force_openmp):
+def generate_fortran_makefile(working_dir_path, source_paths, source_files, compiler):
 
     # This function generates a makefile for compiling the given 
     # Fortran source files.
@@ -400,8 +412,7 @@ def generate_f90_makefile(working_dir_path, source_paths, source_files, force_op
                                    source_paths, 
                                    source_files)
 
-    main_source, use_mpi, use_openmp = gather_source_information(source_objects, 
-                                                                 force_openmp)
+    main_source, use_mpi, use_openmp = gather_source_information(source_objects)
 
     print '\nExamining dependencies...'
 
@@ -409,14 +420,16 @@ def generate_f90_makefile(working_dir_path, source_paths, source_files, force_op
 
     object_dependencies = determine_object_dependencies(source_objects)
 
-    print '\nGenerating makefile text...'
+    sys.stdout.write('\nGenerating makefile text...')
+    sys.stdout.flush()
 
     compile_rule_string = gather_compile_rules(source_objects, 
                                                object_dependencies)
 
     # Collect makefile parameters
 
-    compiler = 'mpif90' if use_mpi else 'gfortran'
+    default_compiler = 'mpif90' if use_mpi else 'gfortran'
+    compiler = default_compiler if (compiler is None) else compiler
 
     executable_name = main_source.name + '.x'
 
@@ -429,17 +442,20 @@ def generate_f90_makefile(working_dir_path, source_paths, source_files, force_op
     linking_flags = parallel_flag
 
     # Create makefile
-    makefile = '''
+    makefile = '''#$%s
 # This makefile was generated by makemake.py.
 # GitHub repository: https://github.com/lars-frogner/makemake.py
 # 
 # Usage:
-# 'make':         Compiles with no compiler flags.
-# 'make debug':   Compiles with flags useful for debugging.
-# 'make fast':    Compiles with flags for high performance.
-# 'make profile': Compiles with flags for profiling.
-# 'make gprof':   Displays the profiling results with gprof.
-# 'make clean':   Deletes auxiliary files.
+# 'make <argument 1> <argument 2> ...'
+#
+# Arguments:
+# <none>:    Compiles with no compiler flags.
+# 'debug':   Compiles with flags useful for debugging.
+# 'fast':    Compiles with flags for high performance.
+# 'profile': Compiles with flags for profiling.
+# 'gprof':   Displays the profiling results with gprof.
+# 'clean':   Deletes auxiliary files.
 
 # Define variables
 COMP = %s
@@ -484,7 +500,8 @@ clean:
 # Action for reading profiling results
 gprof:
 \tgprof $(EXECNAME)''' \
-    % (compiler,
+    % (executable_name[:-2],
+       compiler,
        executable_name,
        source_object_names_string,
        module_names_string,
@@ -492,4 +509,6 @@ gprof:
        linking_flags,
        compile_rule_string)
 
-    makemake_lib.save_makefile(makefile, working_dir_path)
+    print ' Done'
+
+    makemake_lib.save_makefile(makefile, working_dir_path, executable_name[:-2])
