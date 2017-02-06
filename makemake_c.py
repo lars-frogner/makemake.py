@@ -14,6 +14,10 @@ def abort_multiple_producers(function):
     print 'Error: function \"\" implemented multiple times' % function
     sys.exit(1)
 
+def abort_invalid_lib(library):
+
+    print 'Error: invalid name for library \"%s\". Name must start with \"lib\"' % library
+
 def clean_file_text(text):
 
     # This function removes non-executable code like comments and strings
@@ -315,7 +319,7 @@ def process_files(working_dir_path, source_paths, header_paths, library_paths, s
 
         filename_with_path, has_specified_path, specified_path = makemake_lib.search_for_file(file_string, 
                                                                                               working_dir_path, 
-                                                                                              header_paths)
+                                                                                              header_paths)[:3]
 
         header_objects.append(c_header(filename_with_path))
 
@@ -340,11 +344,18 @@ def process_files(working_dir_path, source_paths, header_paths, library_paths, s
 
     extra_library_paths = []
 
-    for file_string in library_files:
+    for i in xrange(len(library_files)):
 
-        has_specified_path, specified_path = makemake_lib.search_for_file(file_string, 
-                                                                          working_dir_path, 
-                                                                          library_paths)[1:3]
+        has_specified_path, specified_path, filename = makemake_lib.search_for_file(library_files[i], 
+                                                                                    working_dir_path, 
+                                                                                    library_paths)[1:]
+
+        if len(filename) < 3 or filename[:3] != 'lib':
+            abort_invalid_lib(filename)
+
+        filename = '.'.join(filename.split('.')[:-1])
+
+        library_files[i] = filename[3:]
 
         if has_specified_path:
             extra_library_paths.append(specified_path)
@@ -629,9 +640,9 @@ def generate_makefile(working_dir_path, source_paths, header_paths, library_path
 
     pre_linking_flags = parallel_flag
 
-    post_linking_flags = ' '.join(['-L\"%s\"' % path for path in library_paths]) \
+    post_linking_flags = ''.join([' -L\"%s\"' % path for path in library_paths]) \
                          + math_flag \
-                         + ' '.join(['-l%s' % filename for filename in library_files])
+                         + ''.join([' -l%s' % filename for filename in library_files])
 
     # Create makefile text
 
