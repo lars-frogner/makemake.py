@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 02.02.2017 by Lars Frogner
+# Last modified 06.02.2017 by Lars Frogner
 #
 import sys, os
 
@@ -242,32 +242,190 @@ class cycle_resolver:
 
             break
 
-def save_makefile(makefile, working_dir_path):
+def save_makefile(makefile, working_dir_path, executable_name):
 
-    # This function saves the generated makefile text to a file.
+    # This function saves the generated makefile text to a file, while
+    # managing any existing makefiles to avoid conflicts.
 
-    cannot_write = True
     filename = 'makefile'
     makefilepath = os.path.join(working_dir_path, filename)
 
-    while cannot_write:
+    if os.path.exists(makefilepath):
 
-        if os.path.exists(makefilepath):
+        f = open(makefilepath, 'r')
+        lines = f.readlines()
+        f.close()
 
-            print 'A file named \"%s\" already exists.' % filename
+        is_wrapper = False
+        other_executable_name = None
+
+        for line in lines:
+
+            stripped = line.strip()
+
+            if stripped == '#$wrapper':
+
+                is_wrapper = True
+                break
+
+            elif len(stripped) > 2 and stripped[:2] == '#@':
+
+                other_executable_name = stripped[2:]
+                break
+
+        if is_wrapper:
+
+            print '\nThere exists a makefile wrapper in this directory'
 
             ans = ''
-            while not ans in ['o', 'r', 'a']:
-                ans = raw_input('How to proceed? [o: overwrite, r: rename, a: abort]\n').lower()
+            while not ans in ['o', 'n', 'w', 'a']:
+                ans = raw_input('How to proceed? [o: overwrite wrapper, n: set custom name, w: include in wrapper, a: abort]\n').lower()
 
             if ans == 'o':
 
+                sys.stdout.write('Overwriting makefile wrapper...')
+                sys.stdout.flush()
+
+                f = open(makefilepath, 'w')
+                f.write(makefile)
+                f.close()
+
+                print ' Done'
+
+            elif ans == 'n':
+
+                filename = raw_input('Input new makefile name:\n')
+                write_new_file(makefile, working_dir_path, filename)
+
+            elif ans == 'w':
+
+                makefile_name = '%s.mk' % executable_name
+
+                write_new_file(makefile, working_dir_path, makefile_name)
+
+                generate_wrapper(working_dir_path)
+
+            elif ans == 'a':
+
+                abort()
+
+        elif not (other_executable_name is None) and executable_name != other_executable_name:
+
+            print '\nThere already exists a default generated makefile for another executable'
+
+            ans = ''
+            while not ans in ['o', 'n', 'w', 'a']:
+                ans = raw_input('How to proceed? [o: overwrite, n: set custom name, w: create wrapper, a: abort]\n').lower()
+
+            if ans == 'o':
+
+                sys.stdout.write('Overwriting old makefile...')
+                sys.stdout.flush()
+
+                f = open(makefilepath, 'w')
+                f.write(makefile)
+                f.close()
+
+                print ' Done'
+
+            elif ans == 'n':
+
+                filename = raw_input('Input new makefile name:\n')
+                write_new_file(makefile, working_dir_path, filename)
+
+            elif ans == 'w':
+
+                makefile_name = '%s.mk' % executable_name
+                other_makefile_name = '%s.mk' % other_executable_name
+
+                sys.stdout.write('Renaming old makefile to \"%s\"...' % other_makefile_name)
+                sys.stdout.flush()
+
+                os.rename(makefilepath, os.path.join(working_dir_path, other_makefile_name))
+
+                print ' Done'
+
+                write_new_file(makefile, working_dir_path, makefile_name)
+
+                generate_wrapper(working_dir_path)
+
+            elif ans == 'a':
+
+                abort()
+
+        else:
+
+            if executable_name == other_executable_name:
+                print '\nThere already exists a default generated makefile for this executable'
+            else:
+                print '\nThere already exists a default non-generated makefile in this directory'
+
+            ans = ''
+            while not ans in ['o', 'n', 'a']:
+                ans = raw_input('How to proceed? [o: overwrite, n: set custom name, a: abort]\n').lower()
+
+            if ans == 'o':
+
+                sys.stdout.write('Overwriting old makefile...')
+                sys.stdout.flush()
+
+                f = open(makefilepath, 'w')
+                f.write(makefile)
+                f.close()
+
+                print ' Done'
+
+            elif ans == 'n':
+
+                filename = raw_input('Input new makefile name:\n')
+                write_new_file(makefile, working_dir_path, filename)
+
+            elif ans == 'a':
+
+                abort()
+
+    else:
+
+        sys.stdout.write('\nSaving makefile...')
+        sys.stdout.flush()
+
+        f = open(makefilepath, 'w')
+        f.write(makefile)
+        f.close()
+
+        print ' Done'
+
+def write_new_file(text, working_dir_path, filename, ftype='makefile'):
+
+    # This function saves a new file with a custom name.
+
+    filepath = os.path.join(working_dir_path, filename)
+    cannot_write = True
+
+    while cannot_write:
+
+        sys.stdout.write('\nSaving %s as \"%s\"... ' % (ftype, filename))
+        sys.stdout.flush()
+
+        if os.path.exists(filepath):
+
+            print '\nA file of the same name already exists'
+
+            ans = ''
+            while not ans in ['o', 'n', 'a']:
+                ans = raw_input('How to proceed? [o: overwrite, n: new name, a: abort]\n').lower()
+
+            if ans == 'o':
+
+                sys.stdout.write('Overwriting old file... ')
+                sys.stdout.flush()
+
                 cannot_write = False
 
-            elif ans == 'r':
+            elif ans == 'n':
 
-                filename = raw_input('Input new makfile name:\n')
-                makefilepath = os.path.join(working_dir_path, filename)
+                filename = raw_input('Input new %s name:\n' % ftype)
+                filepath = os.path.join(working_dir_path, filename)
 
             elif ans == 'a':
 
@@ -276,7 +434,46 @@ def save_makefile(makefile, working_dir_path):
         else:
             cannot_write = False
 
-    f = open(makefilepath, 'w')
-    f.write(makefile)
+    f = open(filepath, 'w')
+    f.write(text)
     f.close()
-    print 'New makefile saved as \"%s\"' % filename
+
+    print 'Done'
+
+def generate_wrapper(working_dir_path):
+
+    # This function generates a wrapper for the makefiles in the
+    # working directory.
+
+    print '\nGenerating makefile wrapper...'
+
+    makefile_names = []
+
+    for filename in os.listdir(working_dir_path):
+        if os.path.isfile(filename):
+            if '.' in filename and filename.split('.')[-1] == 'mk':
+
+                makefile_names.append('.'.join(filename.split('.')[:-1]))
+
+    if len(makefile_names) > 0:
+
+        print 'Makefiles found:\n' + '\n'.join([('-%s.mk' % makefile_name) for makefile_name in makefile_names])
+
+        wrapper_text = '''#$wrapper
+# This makefile wrapper was generated by makemake.py.
+# GitHub repository: https://github.com/lars-frogner/makemake.py
+# 
+# Usage:
+# 'make <name> [ARGS="<argument 1> <argument 2> ..."]'
+#
+# This runs <name>.mk with the stated arguments.'''
+
+        for makefile_name in makefile_names:
+
+            wrapper_text += '\n\n%s:\n\tmake -f %s $(ARGS)' % (makefile_name, makefile_name + '.mk')
+
+        write_new_file(wrapper_text, working_dir_path, 'makefile', ftype='makefile wrapper')
+
+    else:
+
+        print 'No makefiles found'
