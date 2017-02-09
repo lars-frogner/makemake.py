@@ -6,7 +6,7 @@
 #
 # State: Functional
 #
-# Last modified 06.02.2017 by Lars Frogner
+# Last modified 09.02.2017 by Lars Frogner
 #
 import sys, os
 
@@ -26,8 +26,7 @@ Flags:
 '-w':                 Generates a wrapper for all .mk files in the 
                       directory.
 '-S <paths>':         Specifies search paths to use for source files.
-'-H <paths>':         Specifies search paths to use for header files 
-                      (C only).
+'-H <paths>':         Specifies search paths to use for header files.
 '-L <paths>':         Specifies search paths to use for library files 
                       (C only).
 
@@ -128,6 +127,8 @@ def detect_language(arg_list, valid_fortran_endings, valid_c_endings):
         dot_splitted = filename.split('.')
         ending = '<no ending>' if len(dot_splitted) == 0 else dot_splitted[-1]
 
+        if ending in valid_fortran_endings and ending in valid_c_endings: continue
+
         if ending in valid_fortran_endings:
 
             if language is None:
@@ -161,8 +162,16 @@ def convert_relative_paths(working_dir_path, paths):
 combinable_flags = ['S', 'H', 'L']
 incombinable_flags = ['w', 'c']
 
-valid_fortran_endings = ['f90', 'f95', 'f03', 'f', 'for', 'F', 'F90']
-valid_c_endings = ['c', 'h', 'a', 'so']
+fortran_source_endings = ['f90', 'f95', 'f03', 'f', 'for', 'F', 'F90']
+fortran_header_endings = ['h']
+
+c_source_endings = ['c']
+c_header_endings = ['h']
+c_library_endings = ['a', 'so']
+
+valid_fortran_endings = fortran_source_endings + fortran_header_endings
+valid_c_endings = c_source_endings + c_header_endings + c_library_endings
+
 valid_file_endings = valid_fortran_endings + valid_c_endings
 
 # Get path to the directory this script was run from
@@ -190,9 +199,26 @@ if language == 'fortran':
 
     import makemake_f
 
-    source_files = arg_list
+    source_files = []
+    header_files = []
 
-    makemake_f.generate_fortran_makefile(working_dir_path, source_paths, source_files, compiler)
+    for filename in arg_list:
+
+        ending = filename.split('.')[-1]
+
+        if ending in fortran_source_endings:
+            source_files.append(filename)
+        elif ending in fortran_header_endings:
+            header_files.append(filename)
+        else:
+            abort_ending(filename)
+
+    makemake_f.generate_fortran_makefile_from_files(working_dir_path, 
+                                                    source_paths, 
+                                                    header_paths, 
+                                                    source_files, 
+                                                    header_files, 
+                                                    compiler)
 
 elif language == 'c':
 
@@ -206,26 +232,29 @@ elif language == 'c':
 
         ending = filename.split('.')[-1]
 
-        if ending == 'c':
+        if ending in c_source_endings:
             source_files.append(filename)
-        elif ending == 'h':
+        elif ending in c_header_endings:
             header_files.append(filename)
-        elif ending in ['a', 'so']:
+        elif ending in c_library_endings:
             library_files.append(filename)
         else:
-            abort_ending(ending)
+            abort_ending(filename)
 
-    makemake_c.generate_makefile(working_dir_path, 
-                                 source_paths, 
-                                 header_paths, 
-                                 library_paths, 
-                                 source_files, 
-                                 header_files, 
-                                 library_files, 
-                                 compiler)
+    makemake_c.generate_c_makefile_from_files(working_dir_path, 
+                                              source_paths, 
+                                              header_paths, 
+                                              library_paths, 
+                                              source_files, 
+                                              header_files, 
+                                              library_files, 
+                                              compiler)
 
 elif not generate_wrapper:
     abort_usage()
+
+else:
+    abort_language()
 
 if generate_wrapper:
 
