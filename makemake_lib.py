@@ -18,12 +18,6 @@ def abort_not_found(filename):
     print 'Error: could not find file \"%s\"' % filename
     sys.exit(1)
 
-def abort_multiple_something_files(something, source_name_1, source_name_2):
-
-    print 'Error: found multiple %s files (\"%s\" and \"%s\")' \
-          % (something, source_name_1, source_name_2)
-    sys.exit(1)
-
 def abort_no_something_file(something):
 
     print 'Error: found no %s file' % something
