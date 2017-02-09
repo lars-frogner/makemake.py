@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 06.02.2017 by Lars Frogner
+# Last modified 08.02.2017 by Lars Frogner
 #
 import sys, os
 
@@ -41,7 +41,7 @@ def abort_multiple_something(something, something_name):
           % (something, something_name)
     sys.exit(1)
 
-def search_for_file(file_string, working_dir_path, search_paths):
+def search_for_file(file_string, working_dir_path, search_paths, abort_on_fail=True):
 
     # This function searches for the given file and returns the full 
     # path where the file was found.
@@ -49,9 +49,16 @@ def search_for_file(file_string, working_dir_path, search_paths):
     slash_splitted = file_string.split('/')
 
     filename = slash_splitted[-1]
-    specified_path = '/'.join(slash_splitted[:-1])
 
+    specified_path = '/'.join(slash_splitted[:-1])
     has_specified_path = len(specified_path.strip()) > 0
+
+    determined_path = specified_path
+    has_determined_path = has_specified_path
+
+    filename_with_path = None
+
+    found = True
 
     print '\n%s:' % filename
 
@@ -67,10 +74,17 @@ def search_for_file(file_string, working_dir_path, search_paths):
 
         filename_with_path = os.path.join(specified_path, filename)
 
-        if not os.path.isfile(filename_with_path):
+        if not os.path.isfile(filename_with_path) and abort_on_fail:
+
             abort_not_found(filename)
 
-        print ' Found'
+        elif not abort_on_fail:
+
+            print ' Not found'
+            found = False
+
+        else:
+            print ' Found'
 
     else:
 
@@ -88,7 +102,6 @@ def search_for_file(file_string, working_dir_path, search_paths):
         if not os.path.isfile(filename_with_path):
 
             print ' Not found'
-
             found = False
 
             for path in search_paths:
@@ -100,20 +113,35 @@ def search_for_file(file_string, working_dir_path, search_paths):
 
                 if os.path.isfile(filename_with_path):
                     
-                    found = True
                     print ' Found'
+
+                    found = True
                     break
 
                 else:
                     print ' Not found'
 
-            if not found:
+            if not found and abort_on_fail:
+
                 abort_not_found(filename)
 
         else:
+
             print ' Found'
+
+            determined_path = path
+            has_determined_path = True
+
+    if not found and not abort_on_fail:
+
+        ans = ''
+        while not ans in ['y', 'n']:
+            ans = raw_input('Could not find \"%s\". Still continue? [y/n]\n' % filename).lower()
+
+        if ans == 'n':
+            abort()
             
-    return filename_with_path, has_specified_path, specified_path, filename
+    return found, filename_with_path, has_determined_path, determined_path, filename
 
 class cycle_resolver:
 
