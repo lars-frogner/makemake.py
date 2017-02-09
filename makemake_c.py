@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 06.02.2017 by Lars Frogner
+# Last modified 09.02.2017 by Lars Frogner
 #
 import sys, os
 import makemake_lib
@@ -304,29 +304,84 @@ class c_header:
         if self.use_openmp:
             print 'Uses OpenMP'
 
-def process_files(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files):
+def process_headers(working_dir_path, header_paths, header_files, abort_on_fail=True):
 
-    # This function creates lists of c_source and c_header instances
-    # from the given lists of filenames and paths. It also updates
-    # the lists of header and library paths.
-
-    # Process header files
+    # This function creates a list of fortran_header instances from the given 
+    # lists of filenames and paths.
 
     header_objects = []
     extra_header_paths = []
 
     for file_string in header_files:
 
-        filename_with_path, has_specified_path, specified_path = makemake_lib.search_for_file(file_string, 
-                                                                                              working_dir_path, 
-                                                                                              header_paths)[:3]
+        found, filename_with_path, has_determined_path, determined_path = makemake_lib.search_for_file(file_string, 
+                                                                                                       working_dir_path, 
+                                                                                                       header_paths,
+                                                                                                       abort_on_fail=abort_on_fail)[:4]
+        if found:
 
-        header_objects.append(c_header(filename_with_path))
+            header_objects.append(c_header(filename_with_path))
 
-        if has_specified_path:
-            extra_header_paths.append(specified_path)
+            if has_determined_path:
+                extra_header_paths.append(determined_path)
 
-    header_paths = list(set(header_paths + extra_header_paths))
+    extra_header_paths = list(set(extra_header_paths))
+
+    return header_objects, extra_header_paths
+
+def find_missing_headers(working_dir_path, header_paths, source_objects, header_objects):
+
+    # Find all headers included by any source or header file
+
+    iter_list = source_objects + header_objects
+
+    while len(iter_list) > 0:
+
+        missing_headers = []
+
+        for source in iter_list:
+
+            for header_name in source.included_headers:
+
+                found = False
+
+                for header in header_objects:
+
+                    if header_name == header.filename:
+
+                        found = True
+                        break
+
+                if not found:
+
+                    missing_headers.append(header_name)
+
+        missing_headers = list(set(missing_headers))
+
+        if len(missing_headers) > 0:
+            print '\nFound unspecified header dependencies\nStarting search for missing headers...'
+
+        extra_header_objects, extra_header_paths = process_headers(working_dir_path, 
+                                                                   header_paths, 
+                                                                   missing_headers, 
+                                                                   abort_on_fail=False)
+
+        header_objects = list(set(header_objects + extra_header_objects))
+        header_paths = list(set(header_paths + extra_header_paths))
+
+        iter_list = extra_header_objects
+
+    return header_paths, header_objects
+
+def process_files(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files):
+
+    # This function creates a list of c_source instances from the given 
+    # lists of filenames and paths, and also returns a list of c_header
+    # instances produced by the process_headers() function.
+
+    # Process header files
+
+    header_objects, extra_header_paths = process_headers(working_dir_path, header_paths, header_files)
 
     # Process source files
 
@@ -336,9 +391,15 @@ def process_files(working_dir_path, source_paths, header_paths, library_paths, s
 
         filename_with_path = makemake_lib.search_for_file(file_string, 
                                                           working_dir_path, 
-                                                          source_paths)[0]
+                                                          source_paths)[1]
 
         source_objects.append(c_source(filename_with_path))
+
+    # Add missing headers
+
+    header_paths, header_objects = find_missing_headers(working_dir_path, header_paths, source_objects, header_objects)
+
+    header_paths = list(set(header_paths + extra_header_paths))
 
     # Process library files
 
@@ -346,9 +407,9 @@ def process_files(working_dir_path, source_paths, header_paths, library_paths, s
 
     for i in xrange(len(library_files)):
 
-        has_specified_path, specified_path, filename = makemake_lib.search_for_file(library_files[i], 
-                                                                                    working_dir_path, 
-                                                                                    library_paths)[1:]
+        has_determined_path, determined_path, filename = makemake_lib.search_for_file(library_files[i], 
+                                                                                      working_dir_path, 
+                                                                                      library_paths)[2:]
 
         if len(filename) < 3 or filename[:3] != 'lib':
             abort_invalid_lib(filename)
@@ -357,80 +418,88 @@ def process_files(working_dir_path, source_paths, header_paths, library_paths, s
 
         library_files[i] = filename[3:]
 
-        if has_specified_path:
-            extra_library_paths.append(specified_path)
+        if has_determined_path:
+            extra_library_paths.append(determined_path)
 
     library_paths = list(set(library_paths + extra_library_paths))
 
-    return source_objects, header_objects, header_paths, library_paths
-
-def gather_source_information(source_objects, header_objects):
-
-    # This function collects the information about the individual sources.
-
-    use_mpi = False
-    use_openmp = False
-    use_math = False
-
-    main_source = None
-
-    # Go through all source and header objects and gather information
-    # about which libraries to use and which source has the main function.
-
-    for source in source_objects:
-
-        use_mpi = use_mpi or source.use_mpi
-        use_openmp = use_openmp or source.use_openmp
-        use_math = use_math or source.use_math
-
-        if source.is_main:
-
-            if main_source is None:
-                main_source = source
-            else:
-                makemake_lib.abort_multiple_something_files('main', main_source.filename, source.filename)
-
-    for header in header_objects:
-
-        use_mpi = use_mpi or header.use_mpi
-        use_openmp = use_openmp or header.use_openmp
-        use_math = use_math or header.use_math
-
-    if main_source is None:
-        makemake_lib.abort_no_something_file('main')
-
-    return main_source, use_mpi, use_openmp, use_math
+    return source_objects, header_paths, header_objects, library_paths
 
 def determine_header_dependencies(source_objects, header_objects):
 
     # This function creates a dictionary with the c_source objects
     # as keys. The values are lists of paths to the headers that 
-    # the source includes.
+    # the source depends on.
 
-    header_dependencies = {}
+    # Find all headers that each header includes
+
+    header_header_dependencies = {}
+
+    for header in header_objects:
+
+        header_header_dependencies[header] = []
+
+        for header_name in header.included_headers:
+
+            for other_header in header_objects:
+
+                if not (header is other_header) and header_name == other_header.filename:
+
+                    header_header_dependencies[header].append(other_header)
+                    break
+
+    # Find all headers that each header dependes on, directly or 
+    # indirectly
+
+    def add_header_dependencies(original_parent, parent):
+
+        for child in header_header_dependencies[parent]:
+
+            if not (child is original_parent or child in header_header_dependencies[original_parent]):
+
+                header_header_dependencies[original_parent].append(child)
+
+                add_header_dependencies(original_parent, child)
+
+    for header in header_objects:
+
+        for child in header_header_dependencies[header]:
+
+            add_header_dependencies(header, child)
+
+    # Find all headers that each source depends on, directly or 
+    # indirectly. Also transfer any dependencies the headers have 
+    # to the sources that depend on them
+
+    source_header_dependencies = {}
 
     for source in source_objects:
 
-        header_dependencies[source] = []
+        source_header_dependencies[source] = []
 
         for header_name in source.included_headers:
-
-            found = False
 
             for header in header_objects:
 
                 if header_name == header.filename:
 
-                    header_dependencies[source].append(header.filename_with_path)
-                    found = True
+                    for other_header in [header] + header_header_dependencies[header]:
+
+                        if not other_header.filename_with_path in source_header_dependencies[source]:
+
+                            source_header_dependencies[source].append(other_header.filename_with_path)
+
+                            for included_header in other_header.included_headers:
+
+                                if not included_header in source.included_headers:
+
+                                    source.included_headers.append(included_header)
+
                     break
 
-            if not found:
-                makemake_lib.abort_missing_something('header', source.filename, header_name)
+    return source_header_dependencies
 
-    return header_dependencies
-
-def determine_object_dependencies(source_objects, header_objects):
+def determine_object_dependencies(source_objects, header_objects, header_dependencies):
 
     # This function creates a dictionary with the c_source objects
     # as keys. The values are lists of object names for the other
@@ -439,16 +508,16 @@ def determine_object_dependencies(source_objects, header_objects):
     # Create a dictionary of all headers containing the sources that
     # include each header.
 
-    header_dependencies = {}
+    header_source_dependencies = {}
 
     for header in header_objects:
 
-        header_dependencies[header] = []
+        header_source_dependencies[header] = []
 
         for source in source_objects:
 
             if header.filename in source.included_headers:
-                header_dependencies[header].append(source)
+                header_source_dependencies[header].append(source)
 
     # Create a dictionary of headers containing the functions that each
     # header declares. Each function is a key to a dictionary containing
@@ -467,7 +536,7 @@ def determine_object_dependencies(source_objects, header_objects):
             producer_consumer_dict[header][function]['producers'] = []
             producer_consumer_dict[header][function]['consumers'] = []
 
-            for source in header_dependencies[header]:
+            for source in header_source_dependencies[header]:
 
                 # Split source text at the function name
                 func_splitted = source.clean_text.split(function + '(')
@@ -544,23 +613,56 @@ def determine_object_dependencies(source_objects, header_objects):
 
         object_dependencies[source] = list(set(object_dependencies[source]))
 
+    # Remove unnecessary sources
+
+    not_needed = []
+
+    for source in source_objects:
+
+        if not source.is_main:
+
+            is_needed = False
+
+            for other_source in source_objects:
+
+                if not (other_source is source):
+
+                    for source_dependency in object_dependencies[other_source]:
+
+                        if source_dependency is source:
+                            is_needed = True
+
+            if not is_needed:
+                not_needed.append(source)
+
+    for remove_src in not_needed:
+
+        source_objects.remove(remove_src)
+        object_dependencies.pop(remove_src)
+
     # Fix circular dependencies
 
     object_dependencies = makemake_lib.cycle_resolver().resolve_cycles(object_dependencies)
 
     # Print dependency list
 
-    print '\nSource dependencies:'
+    print '\nDependencies:'
 
-    for source in sorted(object_dependencies, key=lambda source: len(object_dependencies[source]), reverse=True):
+    for source in sorted(object_dependencies, key=lambda source: len(object_dependencies[source] + header_dependencies[source]), reverse=True):
 
-        if len(object_dependencies[source]) == 0:
+        if len(object_dependencies[source] + header_dependencies[source]) == 0:
 
             print '\n%s: None' % (source.filename)
         
         else:
+
+            print '\n%s:' % (source.filename)
         
-            print '\n%s:\n%s' % (source.filename, '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]]))
+            if len(header_dependencies[source]) > 0:
+                print '\n'.join(['-%s' % (hdr.split('/')[-1]) for hdr in header_dependencies[source]])
+
+            if len(object_dependencies[source]) > 0:
+                print '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]])
 
     # Convert values from c_source instances to object names
 
@@ -568,7 +670,32 @@ def determine_object_dependencies(source_objects, header_objects):
 
         object_dependencies[source] = [src.object_name for src in object_dependencies[source]]
 
-    return object_dependencies
+    return source_objects, object_dependencies
+
+def determine_library_usage(source_objects, header_objects):
+
+    # This function collects the information about the individual sources.
+
+    use_mpi = False
+    use_openmp = False
+    use_math = False
+
+    # Go through all source and header objects and gather information
+    # about which libraries to use and which source has the main function.
+
+    for source in source_objects:
+
+        use_mpi = use_mpi or source.use_mpi
+        use_openmp = use_openmp or source.use_openmp
+        use_math = use_math or source.use_math
+
+    for header in header_objects:
+
+        use_mpi = use_mpi or header.use_mpi
+        use_openmp = use_openmp or header.use_openmp
+        use_math = use_math or header.use_math
+
+    return use_mpi, use_openmp, use_math
 
 def gather_compile_rules(source_objects, header_dependencies, object_dependencies):
 
@@ -589,16 +716,16 @@ def gather_compile_rules(source_objects, header_dependencies, object_dependencie
 
     return ''.join(compile_rules)
 
-def generate_makefile(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files, compiler):
+def generate_c_makefile_from_files(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files, compiler):
 
-    # This function generates a makefile for compiling the given 
-    # C source files.
+    # This function generates makefiles for compiling the programs 
+    # in the given C source files.
 
     # Get information from files
 
     print '\nCollecting files...'
 
-    source_objects, header_objects, header_paths, library_paths = process_files(working_dir_path, 
+    source_objects, header_paths, header_objects, library_paths = process_files(working_dir_path, 
                                                                                 source_paths, 
                                                                                 header_paths, 
                                                                                 library_paths, 
@@ -606,19 +733,52 @@ def generate_makefile(working_dir_path, source_paths, header_paths, library_path
                                                                                 header_files, 
                                                                                 library_files)
 
-    main_source, use_mpi, use_openmp, use_math = gather_source_information(source_objects, 
-                                                                           header_objects)
+    program_sources = []
+
+    filtered_source_objects = list(source_objects)
+
+    for source in source_objects:
+
+        if source.is_main:
+
+            program_sources.append(source)
+            filtered_source_objects.remove(source)
+
+    if len(program_sources) == 0:
+        makemake_lib.abort_no_something_file('main')
+
+    print '\nPrograms to generate makefiles for:\n%s' % ('\n'.join(['-%s' % (src.name + '.x') for src in program_sources]))
+
+    for program_source in program_sources:
+
+        new_source_objects = [program_source] + filtered_source_objects
+        executable_name = program_source.name + '.x'
+
+        generate_c_makefile_from_objects(working_dir_path, new_source_objects, header_paths, library_paths, header_objects, library_files, executable_name, compiler)
+
+def generate_c_makefile_from_objects(working_dir_path, source_objects, header_paths, library_paths, header_objects, library_files, executable_name, compiler):
+
+    # This function generates a makefile for compiling the program 
+    # given by the supplied c_source objects.
+
+    print '\nGenerating makefile for executable \"%s\"...' % executable_name
+
+    # Get information from files
 
     print '\nExamining dependencies...'
 
     header_dependencies = determine_header_dependencies(source_objects, 
                                                         header_objects)
 
-    object_dependencies = determine_object_dependencies(source_objects, 
-                                                            header_objects)
+    source_objects, object_dependencies = determine_object_dependencies(source_objects, 
+                                                                        header_objects,
+                                                                        header_dependencies)
 
     sys.stdout.write('\nGenerating makefile text...')
     sys.stdout.flush()
+
+    use_mpi, use_openmp, use_math = determine_library_usage(source_objects, 
+                                                            header_objects)
 
     compile_rule_string = gather_compile_rules(source_objects, 
                                                header_dependencies, 
@@ -628,8 +788,6 @@ def generate_makefile(working_dir_path, source_paths, header_paths, library_path
 
     default_compiler = 'mpicc' if use_mpi else 'gcc'
     compiler = default_compiler if (compiler is None) else compiler
-
-    executable_name = main_source.name + '.x'
 
     source_object_names_string = ' '.join([source.object_name for source in source_objects])
 
