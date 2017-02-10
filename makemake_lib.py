@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 08.02.2017 by Lars Frogner
+# Last modified 10.02.2017 by Lars Frogner
 #
 import sys, os
 
@@ -29,10 +29,10 @@ def abort_missing_something(something, source_name, something_name):
           % (something, something_name, source_name)
     sys.exit(1)
 
-def abort_multiple_something(something, something_name):
+def abort_multiple_something(something, something_name, name_list=False):
 
-    print 'Error: found multiple %s named \"%s\"' \
-          % (something, something_name)
+    print 'Error: found multiple %s named \"%s\"%s' \
+          % (something, something_name, '' if not name_list else '\n(%s)' % (', '.join(name_list)))
     sys.exit(1)
 
 def search_for_file(file_string, working_dir_path, search_paths, abort_on_fail=True):
