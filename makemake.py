@@ -21,14 +21,14 @@ can be prepended with their absoulte path (from /) or relative path
 (from ./).
 
 Flags:
-'-c <compiler name>': Specifies which compiler to use (default is GCC 
-                      compilers).
-'-w':                 Generates a wrapper for all .mk files in the 
-                      directory.
-'-S <paths>':         Specifies search paths to use for source files.
-'-H <paths>':         Specifies search paths to use for header files.
-'-L <paths>':         Specifies search paths to use for library files 
-                      (C only).
+-c <compiler name>: Specifies which compiler to use (default is GCC 
+                    compilers).
+-w:                 Generates a wrapper for all .mk files in the 
+                    directory.
+-S <paths>:         Specifies search paths to use for source files.
+-H <paths>:         Specifies search paths to use for header files.
+-L <paths>:         Specifies search paths to use for library files 
+                    (C only).
 
 The S, H and L flags can be combined arbitrarily (e.g. -SH or -LSH).'''
     sys.exit(1)
