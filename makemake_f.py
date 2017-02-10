@@ -4,28 +4,32 @@
 #
 # State: Functional
 #
-# Last modified 09.02.2017 by Lars Frogner
+# Last modified 10.02.2017 by Lars Frogner
 #
 import sys, os
 import makemake_lib
 
-def parse_lines(lines, is_header=False):
+def parse_lines(lines, is_header=False, functions_to_detect=[], subroutines_to_detect=[]):
 
     # This function parses the given list of source code lines and
     # returns information about the content of the source files.
 
     programs = []
     modules = []
-    procedures = []
+    external_functions = []
+    external_subroutines = []
     module_dependencies = []
     included_headers = []
     procedure_dependencies = []
+
+    detected_procedure_calls = []
 
     use_mpi = False
     use_openmp = False
 
     prev_line = ''
     inside = False
+    unknown_in_or_out = is_header
 
     # Parse source file
     for line in lines:
@@ -48,8 +52,8 @@ def parse_lines(lines, is_header=False):
         else:
             prev_line = ''
 
-        words = words.replace(',', ' ')                  # Treat "," as word separator
-        words = words.replace('::', ' :: ')              # Ensure separation at "::"
+        words = words.replace(',', ' ')                    # Treat "," as word separator
+        words = words.replace('::', ' :: ')                # Ensure separation at "::"
         words_with_case = words.split()
         words = [word.lower() for word in words_with_case] # List of words in lowercase
 
@@ -60,39 +64,58 @@ def parse_lines(lines, is_header=False):
         third_word = '' if n_words < 3 else words[2]
 
         # External scope declarations
-        if not inside:
+        if not inside or unknown_in_or_out:
 
             # Check for program declaration
             if first_word == 'program':
 
                 programs.append(second_word)
                 inside = 'program'
+                unknown_in_or_out = False
 
             # Check for module declaration
             elif first_word == 'module':
 
                 modules.append(second_word + '.mod')
                 inside = 'module'
+                unknown_in_or_out = False
 
-            # Check for function declaration
-            elif first_word == 'function':
+            # Check for include statement
+            elif first_word == 'include' or first_word == '#include':
 
-                procedures.append(second_word.split('(')[0])
-                inside = 'function'
+                dep = words_with_case[1][1:-1]
 
-            elif second_word == 'function':
+                if dep == 'mpif.h':
+                    use_mpi = True
+                elif dep == 'omp_lib.h':
+                    use_openmp = True
+                else:
+                    included_headers.append(dep)
 
-                procedures.append(third_word.split('(')[0])
-                inside = 'function'
+            # Check for external function declaration
+            elif 'function' in words:
 
-            # Check for subroutine declaration
-            elif first_word == 'subroutine':
+                idx = words.index('function')
 
-                procedures.append(second_word.split('(')[0])
-                inside = 'subroutine'
+                if n_words > idx + 1:
+
+                    external_functions.append(words[idx + 1].split('(')[0])
+                    inside = 'function'
+                    unknown_in_or_out = False
+
+            # Check for external subroutine declaration
+            elif 'subroutine' in words:
+
+                idx = words.index('subroutine')
+
+                if n_words > idx + 1:
+
+                    external_subroutines.append(words[idx + 1].split('(')[0])
+                    inside = 'subroutine'
+                    unknown_in_or_out = False
 
         # Internal scope declarations
-        if inside or is_header:
+        if inside or unknown_in_or_out:
 
             # Check for module import statement
             if first_word == 'use':
@@ -101,41 +124,87 @@ def parse_lines(lines, is_header=False):
 
                 for dep in deps:
 
-                    if dep == 'mpi':
+                    if dep == 'mpi' or dep == 'mpi_f08':
                         use_mpi = True
                     elif dep == 'omp_lib':
                         use_openmp = True
                     else:
                         module_dependencies.append(dep + '.mod')
 
+                unknown_in_or_out = False
+
             # Check for include statement
-            if first_word == 'include':
+            elif first_word == 'include' or first_word == '#include':
 
                 dep = words_with_case[1][1:-1]
 
-                if dep == 'mpi.h':
+                if dep == 'mpif.h':
                     use_mpi = True
                 elif dep == 'omp_lib.h':
                     use_openmp = True
                 else:
                     included_headers.append(dep)
 
-            # Check for declaration of external procedure
-            elif 'external' in words:
-
-                ext_idx = words.index('external')
-
-                if '::' in words:
-
-                    sep_idx = words.index('::')
-                    procedure_dependencies += words[sep_idx+1:]
-
-                else:
-                    procedure_dependencies += words[ext_idx+1:]
-
             # Check for end of external scope
             elif first_word == 'end' and (second_word == inside or second_word == ''):
+
                 inside = False
+                unknown_in_or_out = False
+
+            else:
+
+                # Check for declaration of external procedure
+                if 'external' in words:
+
+                    ext_idx = words.index('external')
+
+                    if '::' in words:
+
+                        sep_idx = words.index('::')
+                        procedure_dependencies += words[sep_idx+1:]
+
+                    else:
+                        procedure_dependencies += words[ext_idx+1:]
+
+                    unknown_in_or_out = False
+
+                elif len(functions_to_detect) > 0 or len(subroutines_to_detect) > 0:
+
+                    joined_words = ' '.join(words).replace('\'', '\"')
+                    joined_words = ''.join(joined_words.split('\"')[::2])
+
+                    found_procedure_call = False
+
+                    for function in list(functions_to_detect):
+
+                        function_splitted = joined_words.split(function)
+
+                        if len(function_splitted) > 1:
+
+                            before = subroutine_splitted[0]
+                            stripped = function_splitted[1].strip()
+
+                            if len(stripped) > 0 and stripped[0] == '(' and (len(before) == 0 or not (before[-1] in ['abcdefghijklmnopqrstuvwxyz_'])):
+
+                                detected_procedure_calls.append(function)
+                                functions_to_detect.remove(function)
+                                found_procedure_call = True
+
+                    if not found_procedure_call:
+
+                        for subroutine in list(subroutines_to_detect):
+
+                            subroutine_splitted = joined_words.split(subroutine)
+
+                            if len(subroutine_splitted) > 1:
+
+                                splitted = subroutine_splitted[0].split()
+                                stripped = subroutine_splitted[1].strip()
+
+                                if len(stripped) > 0 and stripped[0] == '(' and len(splitted) > 0 and splitted[-1] == 'call':
+
+                                    detected_procedure_calls.append(subroutine)
+                                    subroutines_to_detect.remove(subroutine)
 
     # Ignore dependencies on modules and procedures in the same file
 
@@ -143,13 +212,13 @@ def parse_lines(lines, is_header=False):
         if dep in modules: module_dependencies.remove(dep)
 
     for dep in list(procedure_dependencies):
-        if dep in procedures: procedure_dependencies.remove(dep)
+        if dep in external_functions + external_subroutines: procedure_dependencies.remove(dep)
 
     module_dependencies = list(set(module_dependencies))
     procedure_dependencies = list(set(procedure_dependencies))
     included_headers = list(set(included_headers))
 
-    return programs, modules, procedures, module_dependencies, procedure_dependencies, included_headers, use_mpi, use_openmp
+    return programs, modules, external_functions, external_subroutines, module_dependencies, procedure_dependencies, included_headers, use_mpi, use_openmp, detected_procedure_calls
 
 class fortran_source:
 
@@ -157,7 +226,7 @@ class fortran_source:
     # about which programs, modules, external procedures and 
     # dependencies it contains.
 
-    def __init__(self, filename_with_path):
+    def __init__(self, filename_with_path, is_header=False):
 
         self.filename_with_path = filename_with_path
 
@@ -171,24 +240,27 @@ class fortran_source:
         sys.stdout.flush()
 
         f = open(filename_with_path, 'r')
-        lines = f.readlines()
+        self.lines = f.readlines()
         f.close()
 
-        programs, self.modules, self.procedures, self.module_dependencies, self.procedure_dependencies, self.included_headers, self.use_mpi, self.use_openmp = parse_lines(lines)
+        programs, self.modules, self.external_functions, self.external_subroutines, self.module_dependencies, self.procedure_dependencies, self.included_headers, self.use_mpi, self.use_openmp = parse_lines(self.lines, is_header=is_header)[:-1]
 
-        self.main_program = None if len(programs) == 0 else programs[0]
+        self.main_program = False if len(programs) == 0 else programs[0]
         if len(programs) > 1: abort_multiple_programs(self.filename, programs)
 
         print ' Done'
 
-        if not (self.main_program is None):
+        if self.main_program:
             print 'Contained programs:\n-' + self.main_program
 
         if len(self.modules) > 0:
             print 'Contained modules:\n' + '\n'.join([('-%s' % module_name.split('.')[0]) for module_name in self.modules])
 
-        if len(self.procedures) > 0:
-            print 'Contained external procedures:\n' + '\n'.join([('-%s' % procedure_name) for procedure_name in self.procedures])
+        if len(self.external_functions) > 0:
+            print 'Contained external functions:\n' + '\n'.join([('-%s' % procedure_name) for procedure_name in self.external_functions])
+
+        if len(self.external_subroutines) > 0:
+            print 'Contained external subroutines:\n' + '\n'.join([('-%s' % procedure_name) for procedure_name in self.external_subroutines])
 
         if len(self.module_dependencies) > 0:
             print 'Used modules:\n' + '\n'.join([('-%s' % module_name.split('.')[0]) for module_name in self.module_dependencies])
@@ -213,53 +285,14 @@ class fortran_source:
                                      filename_with_path.replace(' ', '\ '),
                                      (' ' if len(self.module_dependencies) != 0 else '') + ' '.join(self.module_dependencies))
 
-        self.compile_rule = '\n%s\t$(COMP) -c $(COMP_FLAGS) \"%s\"' \
+        self.compile_rule = '\n%s\t$(COMP) -c $(COMP_FLAGS) $(FLAGS) \"%s\"' \
                             % (('\trm -f %s\n' % (' '.join(self.modules))) if len(self.modules) != 0 else '', 
                                filename_with_path)
 
-class fortran_header:
-
-    # This class parses an inputted header file and stores information
-    # about which dependencies it contains.
-
-    def __init__(self, filename_with_path):
-
-        self.filename_with_path = filename_with_path
-
-        file_path = '/'.join(filename_with_path.split('/')[:-1])
-
-        self.filename = filename_with_path.split('/')[-1]
-
-        sys.stdout.write('Parsing ...')
-        sys.stdout.flush()
-
-        f = open(filename_with_path, 'r')
-        lines = f.readlines()
-        f.close()
-
-        self.module_dependencies, self.procedure_dependencies, self.included_headers, self.use_mpi, self.use_openmp = parse_lines(lines, is_header=True)[3:]
-
-        print ' Done'
-
-        if len(self.module_dependencies) > 0:
-            print 'Used modules:\n' + '\n'.join([('-%s' % module_name.split('.')[0]) for module_name in self.module_dependencies])
-
-        if len(self.procedure_dependencies) > 0:
-            print 'Used external procedures:\n' + '\n'.join([('-%s' % procedure_name) for procedure_name in self.procedure_dependencies])
-
-        if len(self.included_headers) > 0:
-            print 'Included headers:\n' + '\n'.join([('-%s' % header_name) for header_name in self.included_headers])
-
-        if self.use_mpi:
-            print 'Uses MPI'
-
-        if self.use_openmp:
-            print 'Uses OpenMP'
-
 def process_headers(working_dir_path, header_paths, header_files, abort_on_fail=True):
 
-    # This function creates a list of fortran_header instances from the given 
-    # lists of filenames and paths.
+    # This function creates a list of fortran_source header instances 
+    # from the given lists of filenames and paths.
 
     header_objects = []
     extra_header_paths = []
@@ -272,7 +305,7 @@ def process_headers(working_dir_path, header_paths, header_files, abort_on_fail=
                                                                                                        abort_on_fail=abort_on_fail)[:4]
         if found:
 
-            header_objects.append(fortran_header(filename_with_path))
+            header_objects.append(fortran_source(filename_with_path, is_header=True))
 
             if has_determined_path:
                 extra_header_paths.append(determined_path)
@@ -363,6 +396,9 @@ def determine_header_dependencies(source_objects, header_objects):
 
     # Find all headers that each header includes
 
+    sys.stdout.write('\nFinding header dependencies...')
+    sys.stdout.flush()
+
     header_header_dependencies = {}
 
     for header in header_objects:
@@ -419,49 +455,111 @@ def determine_header_dependencies(source_objects, header_objects):
 
                             source_header_dependencies[source].append(other_header.filename_with_path)
 
-                            for dep in other_header.module_dependencies:
+                            if other_header.main_program:
 
-                                if not dep in source.module_dependencies:
+                                if source.main_program:
+                                    makemake_lib.abort_multiple_programs(source.filename, [source.main_program, other_header.main_program])
+                                else:
+                                    source.main_program = other_header.main_program
 
-                                    source.module_dependencies.append(dep)
+                            for mod in other_header.modules:
 
-                            for dep in other_header.procedure_dependencies:
+                                if not mod in source.modules:
 
-                                if not dep in source.procedure_dependencies:
+                                    source.modules.append(mod)
 
-                                    source.procedure_dependencies.append(dep)
+                            for func in other_header.external_functions:
+
+                                if not func in source.external_functions:
+
+                                    source.external_functions.append(func)
+
+                            for sub in other_header.external_subroutines:
+
+                                if not sub in source.external_subroutines:
+
+                                    source.external_subroutines.append(sub)
+
+                            for mod_dep in other_header.module_dependencies:
+
+                                if not mod_dep in source.module_dependencies:
+
+                                    source.module_dependencies.append(mod_dep)
+
+                            for proc_dep in other_header.procedure_dependencies:
+
+                                if not proc_dep in source.procedure_dependencies:
+
+                                    source.procedure_dependencies.append(proc_dep)
 
                     break
 
+    print ' Done'
+
     return source_header_dependencies
 
-def check_dependencies_presence(source_objects, header_objects):
+def check_dependencies_presence(source_objects):
 
     # This function makes sure that all dependencies are present,
     # and that no modules or procedures are implemented multiple
     # times.
 
+    sys.stdout.write('\nMaking sure required sources are present...')
+    sys.stdout.flush()
+
     all_modules = []
-    all_procedures = []
+    all_external_functions = []
+    all_external_subroutines = []
 
     for source in source_objects:
 
         all_modules += source.modules
-        all_procedures += source.procedures
+        all_external_functions += source.external_functions
+        all_external_subroutines += source.external_subroutines
 
     for module in all_modules:
 
-        if all_modules.count(module) > 1:
+        source_list = []
 
-            makemake_lib.abort_multiple_something('modules', module.split('.')[0])
+        for source in source_objects:
 
-    for procedure in all_procedures:
+            if module in source.modules:
+                source_list.append(source.filename)
 
-        if all_procedures.count(procedure) > 1:
+        if len(source_list) > 1:
 
-            makemake_lib.abort_multiple_something('procedures', procedure)
+            print
+            makemake_lib.abort_multiple_something('modules', module.split('.')[0], name_list=source_list)
 
-    for source in source_objects + header_objects:
+    for external_function in all_external_functions:
+
+        source_list = []
+
+        for source in source_objects:
+
+            if external_function in source.external_functions:
+                source_list.append(source.filename)
+
+        if len(source_list) > 1:
+
+            print
+            makemake_lib.abort_multiple_something('external functions', module.split('.')[0], name_list=source_list)
+
+    for external_subroutine in all_external_subroutines:
+
+        source_list = []
+
+        for source in source_objects:
+
+            if external_subroutine in source.external_subroutines:
+                source_list.append(source.filename)
+
+        if len(source_list) > 1:
+
+            print
+            makemake_lib.abort_multiple_something('external subroutines', module.split('.')[0], name_list=source_list)
+
+    for source in source_objects:
 
         for module_dep in source.module_dependencies:
 
@@ -475,13 +573,15 @@ def check_dependencies_presence(source_objects, header_objects):
                     break
 
             if not found:
+
+                print
                 makemake_lib.abort_missing_something('module', source.filename, module_dep.split('.')[0])
 
         for procedure_dep in source.procedure_dependencies:
 
             found = False
 
-            for procedure in all_procedure:
+            for procedure in all_external_functions + all_external_subroutines:
 
                 if procedure_dep == procedure:
 
@@ -489,7 +589,11 @@ def check_dependencies_presence(source_objects, header_objects):
                     break
 
             if not found:
+
+                print
                 makemake_lib.abort_missing_something('procedure', source.filename, procedure_dep)
+
+    print ' Done'
 
     return all_modules
 
@@ -498,6 +602,44 @@ def determine_object_dependencies(source_objects, header_dependencies):
     # This function creates a dictionary with the fortran_source objects
     # as keys. The values are lists of object names for the other
     # sources that implement modules and procedures that the source uses.
+
+    sys.stdout.write('\nFinding external procedure dependencies...')
+    sys.stdout.flush()
+
+    for source in source_objects:
+
+        functions_to_detect = source.external_functions
+        subroutines_to_detect = source.external_subroutines
+
+        for other_source in source_objects:
+
+            if not (other_source is source):
+
+                functions_to_detect_filtered = []
+                subroutines_to_detect_filtered = []
+
+                for func in functions_to_detect:
+
+                    if not func in other_source.procedure_dependencies:
+
+                        functions_to_detect_filtered.append(func)
+
+                for sub in subroutines_to_detect:
+
+                    if not sub in other_source.procedure_dependencies:
+
+                        subroutines_to_detect_filtered.append(sub)
+
+                detected_procedure_calls = parse_lines(other_source.lines, 
+                                                       functions_to_detect=functions_to_detect_filtered, 
+                                                       subroutines_to_detect=subroutines_to_detect_filtered)[-1]
+
+                other_source.procedure_dependencies += detected_procedure_calls
+
+    print ' Done'
+
+    sys.stdout.write('\nDetermining object dependencies...')
+    sys.stdout.flush()
 
     object_dependencies = {}
 
@@ -525,11 +667,14 @@ def determine_object_dependencies(source_objects, header_dependencies):
 
                 if not (other_source is source):
 
-                    if procedure in other_source.procedures:
+                    if procedure in (other_source.external_functions + other_source.external_subroutines):
                         object_dependencies[source].append(other_source)
 
         # Get rid of duplicate object names
         object_dependencies[source] = list(set(object_dependencies[source]))
+
+    sys.stdout.write('\nRemoving independent sources...')
+    sys.stdout.flush()
 
     # Remove unnecessary sources
 
@@ -537,7 +682,7 @@ def determine_object_dependencies(source_objects, header_dependencies):
 
     for source in source_objects:
 
-        if source.main_program is None:
+        if not source.main_program:
 
             is_needed = False
 
@@ -558,9 +703,16 @@ def determine_object_dependencies(source_objects, header_dependencies):
         source_objects.remove(remove_src)
         object_dependencies.pop(remove_src)
 
+    print ' Done'
+
     # Fix circular dependencies
 
+    sys.stdout.write('\nChecking for circular dependencies... ')
+    sys.stdout.flush()
+
     object_dependencies = makemake_lib.cycle_resolver().resolve_cycles(object_dependencies)
+
+    print 'Done'
 
     # Print dependency list
 
@@ -650,7 +802,7 @@ def generate_fortran_makefile_from_files(working_dir_path, source_paths, header_
 
     for source in source_objects:
 
-        if not source.main_program is None:
+        if source.main_program:
 
             program_sources.append(source)
             filtered_source_objects.remove(source)
@@ -658,21 +810,21 @@ def generate_fortran_makefile_from_files(working_dir_path, source_paths, header_
     if len(program_sources) == 0:
         makemake_lib.abort_no_something_file('program')
 
-    print '\nPrograms to generate makefiles for:\n%s' % ('\n'.join(['-%s' % (src.main_program + '.x') for src in program_sources]))
+    print '\nPrograms to generate makefiles for:\n%s' % ('\n'.join(['-%s (%s)' % (src.main_program + '.x', src.filename) for src in program_sources]))
 
     for program_source in program_sources:
 
         new_source_objects = [program_source] + filtered_source_objects
         executable_name = program_source.main_program + '.x'
 
-        generate_fortran_makefile_from_objects(working_dir_path, new_source_objects, header_paths, header_objects, executable_name, compiler)
+        generate_fortran_makefile_from_objects(working_dir_path, new_source_objects, header_paths, header_objects, program_source, executable_name, compiler)
 
-def generate_fortran_makefile_from_objects(working_dir_path, source_objects, header_paths, header_objects, executable_name, compiler):
+def generate_fortran_makefile_from_objects(working_dir_path, source_objects, header_paths, header_objects, program_source, executable_name, compiler):
 
     # This function generates a makefile for compiling the program 
     # given by the supplied fortran_source objects.
 
-    print '\nGenerating makefile for executable \"%s\"...' % executable_name
+    print '\nGenerating makefile for executable %s (%s)...' % (executable_name, program_source.filename)
 
     # Get information from files
 
@@ -681,7 +833,7 @@ def generate_fortran_makefile_from_objects(working_dir_path, source_objects, hea
     header_dependencies = determine_header_dependencies(source_objects, 
                                                         header_objects)
     
-    all_modules = check_dependencies_presence(source_objects, header_objects)
+    all_modules = check_dependencies_presence(source_objects)
 
     source_objects, object_dependencies = determine_object_dependencies(source_objects, header_dependencies)
 
@@ -713,15 +865,19 @@ def generate_fortran_makefile_from_objects(working_dir_path, source_objects, hea
 # GitHub repository: https://github.com/lars-frogner/makemake.py
 # 
 # Usage:
-# 'make <argument 1> <argument 2> ...'
+# make <argument 1> <argument 2> ...
 #
 # Arguments:
-# <none>:    Compiles with no compiler flags.
-# 'debug':   Compiles with flags useful for debugging.
-# 'fast':    Compiles with flags for high performance.
-# 'profile': Compiles with flags for profiling.
-# 'gprof':   Displays the profiling results with gprof.
-# 'clean':   Deletes auxiliary files.
+# <none>:  Compiles with no compiler flags.
+# debug:   Compiles with flags useful for debugging.
+# fast:    Compiles with flags for high performance.
+# profile: Compiles with flags for profiling.
+# gprof:   Displays the profiling results with gprof.
+# clean:   Deletes auxiliary files.
+# help:    Displays this help text.
+#
+# To compile with additional flags, add the argument
+# FLAGS="<flags>"
 
 # Define variables
 COMP = %s
@@ -757,7 +913,7 @@ set_profile_flags:
 
 # Rule for linking object files
 $(EXECNAME): $(OBJECTS)
-\t$(COMP) $(LINK_FLAGS) -o $(EXECNAME) $(OBJECTS)%s
+\t$(COMP) $(LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s
 
 # Action for removing all auxiliary files
 clean:
@@ -765,7 +921,11 @@ clean:
 
 # Action for reading profiling results
 gprof:
-\tgprof $(EXECNAME)''' \
+\tgprof $(EXECNAME)
+
+# Action for printing help text
+help:
+\t@echo "Usage:\\nmake <argument 1> <argument 2> ...\\n\\nArguments:\\n<none>:    Compiles with no compiler flags.\\ndebug:   Compiles with flags useful for debugging.\\nfast:    Compiles with flags for high performance.\\nprofile: Compiles with flags for profiling.\\ngprof:   Displays the profiling results with gprof.\\nclean:   Deletes auxiliary files.\\nhelp:    Displays this help text.\\n\\nTo compile with additional flags, add the argument\\nFLAGS=\\"<flags>\\""''' \
     % (executable_name[:-2],
        compiler,
        executable_name,
