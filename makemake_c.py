@@ -260,7 +260,7 @@ class c_source:
                                      self.object_name, 
                                      filename_with_path.replace(' ', '\ '))
 
-        self.compile_rule = '\n\t$(COMP) -c $(COMP_FLAGS) \"%s\"' % filename_with_path
+        self.compile_rule = '\n\t$(COMP) -c $(COMP_FLAGS) $(FLAGS) \"%s\"' % filename_with_path
 
 class c_header:
 
@@ -809,15 +809,19 @@ def generate_c_makefile_from_objects(working_dir_path, source_objects, header_pa
 # GitHub repository: https://github.com/lars-frogner/makemake.py
 # 
 # Usage:
-# 'make <argument 1> <argument 2> ...'
+# make <argument 1> <argument 2> ...
 #
 # Arguments:
-# <none>:    Compiles with no compiler flags.
-# 'debug':   Compiles with flags useful for debugging.
-# 'fast':    Compiles with flags for high performance.
-# 'profile': Compiles with flags for profiling.
-# 'gprof':   Displays the profiling results with gprof.
-# 'clean':   Deletes auxiliary files.
+# <none>:  Compiles with no compiler flags.
+# debug:   Compiles with flags useful for debugging.
+# fast:    Compiles with flags for high performance.
+# profile: Compiles with flags for profiling.
+# gprof:   Displays the profiling results with gprof.
+# clean:   Deletes auxiliary files.
+# help:    Displays this help text.
+#
+# To compile with additional flags, add the argument
+# FLAGS="<flags>"
 
 # Define variables
 COMP = %s
@@ -852,7 +856,7 @@ set_profile_flags:
 
 # Rule for linking object files
 $(EXECNAME): $(OBJECTS)
-\t$(COMP) $(LINK_FLAGS) -o $(EXECNAME) $(OBJECTS)%s%s
+\t$(COMP) $(LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s%s
 
 # Action for removing all auxiliary files
 clean:
@@ -860,7 +864,11 @@ clean:
 
 # Action for reading profiling results
 gprof:
-\tgprof $(EXECNAME)''' \
+\tgprof $(EXECNAME)
+
+# Action for printing help text
+help:
+\t@echo "Usage:\\nmake <argument 1> <argument 2> ...\\n\\nArguments:\\n<none>:  Compiles with no compiler flags.\\ndebug:   Compiles with flags useful for debugging.\\nfast:    Compiles with flags for high performance.\\nprofile: Compiles with flags for profiling.\\ngprof:   Displays the profiling results with gprof.\\nclean:   Deletes auxiliary files.\\nhelp:    Displays this help text.\\n\\nTo compile with additional flags, add the argument\\nFLAGS=\\"<flags>\\""''' \
     % (executable_name[:-2],
        compiler,
        executable_name,
