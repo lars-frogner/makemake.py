@@ -285,7 +285,7 @@ class fortran_source:
                                      filename_with_path.replace(' ', '\ '),
                                      (' ' if len(self.module_dependencies) != 0 else '') + ' '.join(self.module_dependencies))
 
-        self.compile_rule = '\n%s\t$(COMP) -c $(COMP_FLAGS) $(FLAGS) \"%s\"' \
+        self.compile_rule = '\n%s\t$(COMP) -c $(COMP_FLAGS) $(MPI_COMP_FLAGS) $(FLAGS) \"%s\"' \
                             % (('\trm -f %s\n' % (' '.join(self.modules))) if len(self.modules) != 0 else '', 
                                filename_with_path)
 
@@ -858,7 +858,7 @@ def generate_fortran_makefile_from_objects(working_dir_path, source_objects, hea
 
     elif compiler == 'ifort':
 
-        debug_flags = '-O0 -traceback -check all -check bounds -check uninit -fpe0 -fpe-all=0 -assume ieee_fpe_flags -mp -fp-model strict -fp-speculation=off'
+        debug_flags = '-O0 -traceback -check all -check bounds -check uninit -fpe0 -fpe-all=0 -assume ieee_fpe_flags -fp-model strict -fp-speculation=off'
         fast_flags = '-O3 -xHost -ipo'
     
     else:
@@ -933,7 +933,7 @@ set_profile_flags:
 
 # Rule for linking object files
 $(EXECNAME): $(OBJECTS)
-\t$(COMP) $(LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s
+\t$(COMP) $(LINK_FLAGS) $(MPI_LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s
 
 # Action for removing all auxiliary files
 clean:
