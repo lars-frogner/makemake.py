@@ -848,16 +848,34 @@ def generate_fortran_makefile_from_objects(working_dir_path, source_objects, hea
 
     # Collect makefile parameters
 
-    default_compiler = 'mpif90' if use_mpi else 'gfortran'
+    default_compiler = 'gfortran'
     compiler = default_compiler if (compiler is None) else compiler
+
+    if compiler == 'gfortran':
+
+        debug_flags = '-Og -Wall -Wextra -Wconversion -pedantic -Wno-tabs -fbounds-check -ffpe-trap=zero,overflow)'
+        fast_flags = '-O3'
+
+    elif compiler == 'ifort':
+
+        debug_flags = '-O0 -traceback -check all -check bounds -check uninit -fpe0 -fpe-all=0 -assume ieee_fpe_flags -mp -fp-model strict -fp-speculation=off'
+        fast_flags = '-O3 -xHost -ipo'
+    
+    else:
+
+        debug_flags = ''
+        fast_flags = ''
 
     source_object_names_string = ' '.join([source.object_name for source in source_objects])
     module_names_string = ' '.join(all_modules)
 
-    parallel_flag = '-fopenmp' if use_openmp else ''
+    openmp_flag = '-fopenmp' if use_openmp else ''
 
-    compilation_flags = parallel_flag + ' '.join(['-I\"%s\"' % path for path in header_paths])
-    linking_flags = parallel_flag
+    compilation_flags = openmp_flag + ' '.join(['-I\"%s\"' % path for path in header_paths])
+    linking_flags = openmp_flag
+
+    mpi_comp_flags = '$(shell mpifort --showme:compile)' if use_mpi else ''
+    mpi_link_flags = '$(shell mpifort --showme:link)' if use_mpi else ''
 
     # Create makefile
     makefile = '''#$%s
@@ -886,9 +904,11 @@ OBJECTS = %s
 MODULES = %s
 COMP_FLAGS = %s
 LINK_FLAGS = %s
+MPI_COMPILE_FLAGS = %s
+MPI_LINK_FLAGS = %s
 
 # Make sure certain rules are not activated by the presence of files
-.PHONY: all debug fast profile set_debug_flags set_fast_flags set_profile_flags gprof clean
+.PHONY: all debug fast profile set_debug_flags set_fast_flags set_profile_flags clean gprof help
 
 # Define default target group
 all: $(EXECNAME)
@@ -900,11 +920,11 @@ profile: set_profile_flags $(EXECNAME)
 
 # Defines appropriate compiler flags for debugging
 set_debug_flags:
-\t$(eval COMP_FLAGS = $(COMP_FLAGS) -Og -Wall -Wextra -Wconversion -pedantic -Wno-tabs -fbounds-check -ffpe-trap=zero,overflow)
+\t$(eval COMP_FLAGS = $(COMP_FLAGS) %s)
 
 # Defines appropriate compiler flags for high performance
 set_fast_flags:
-\t$(eval COMP_FLAGS = $(COMP_FLAGS) -O3)
+\t$(eval COMP_FLAGS = $(COMP_FLAGS) %s)
 
 # Defines appropriate compiler flags for profiling
 set_profile_flags:
@@ -927,12 +947,16 @@ gprof:
 help:
 \t@echo "Usage:\\nmake <argument 1> <argument 2> ...\\n\\nArguments:\\n<none>:    Compiles with no compiler flags.\\ndebug:   Compiles with flags useful for debugging.\\nfast:    Compiles with flags for high performance.\\nprofile: Compiles with flags for profiling.\\ngprof:   Displays the profiling results with gprof.\\nclean:   Deletes auxiliary files.\\nhelp:    Displays this help text.\\n\\nTo compile with additional flags, add the argument\\nFLAGS=\\"<flags>\\""''' \
     % (executable_name[:-2],
-       compiler,
+       'mpifort' if use_mpi else compiler,
        executable_name,
        source_object_names_string,
        module_names_string,
        compilation_flags,
        linking_flags,
+       mpi_comp_flags,
+       mpi_link_flags,
+       debug_flags,
+       fast_flags,
        compile_rule_string)
 
     print ' Done'
