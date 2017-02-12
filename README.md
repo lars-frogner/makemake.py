@@ -33,4 +33,6 @@ Here is a list of the available arguments you can add after `make`:
 
 You can also specify any additional compilation flags to use with the argument `FLAGS="<additional flags>"`.
 
+The set of flags used when `debug` or `fast` is added depends on the compiler. You can modify which flags to use, or include flags for more compilers, by editing the *debug_flags.ini* and *performance_flags.ini* files. Each line in these files has the following format: `<compiler>: <flags>`.
+
 Note that you can run *makemake.py* without any arguments to get some more compact usage instructions.
