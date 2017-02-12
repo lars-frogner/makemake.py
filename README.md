@@ -1,5 +1,5 @@
 # makemake.py
-makemake.py is a Python script for generating makefiles that can be used with the GNU make utility for compiling source code. Currently supported programming languages are C and Fortran.
+makemake.py is a Python script for generating makefiles that can be used with the GNU Make utility for compiling source code. Currently supported programming languages are C and Fortran.
 ### How it works
 The script takes a list of source files, and scans their content to determine how the files depend on each other. It then generates a makefile containing compilation and linking rules that take these dependecies into account. An executable can then be produced simply by writing `make`. The makefile contains additional rules for using predefined groups of compiler flags, e. g. using `make debug` will compile with flags useful for debugging.
 
