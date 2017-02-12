@@ -496,3 +496,64 @@ def generate_wrapper(working_dir_path):
     else:
 
         print 'No makefiles found'
+
+def read_flag_groups(compiler):
+
+    # This functions reads the debug_flags.ini and performance_flags.ini
+    # files and extracts the relevant debug and performance flag groups.
+
+    source_path = os.path.dirname(os.path.abspath(__file__))
+
+    try:
+        f = open(os.path.join(source_path, 'debug_flags.ini'), 'r')
+        lines = f.readlines()
+        f.close()
+
+        debug_flags = ''
+
+        for line in lines:
+
+            colon_splitted = line.split(':')
+
+            if len(colon_splitted) > 1 and colon_splitted[0].strip() == compiler:
+
+                debug_flags = ':'.join(colon_splitted[1:]).strip()
+                break
+
+        if debug_flags == '':
+            print '\nWarning: no entry for compiler \"%s\" in \"debug_flags.ini\"'
+            print 'No debug flag group set'
+
+    except IOError:
+
+        print '\nWarning: could not open \"debug_flags.ini\"'
+        print 'No debug flag group set'
+        debug_flags = ''
+
+    try:
+        f = open(os.path.join(source_path, 'performance_flags.ini'), 'r')
+        lines = f.readlines()
+        f.close()
+
+        fast_flags = ''
+
+        for line in lines:
+
+            colon_splitted = line.split(':')
+
+            if len(colon_splitted) > 1 and colon_splitted[0].strip() == compiler:
+
+                fast_flags = ':'.join(colon_splitted[1:]).strip()
+                break
+
+        if fast_flags == '':
+            print '\nWarning: no entry for compiler \"%s\" in \"performance_flags.ini\"'
+            print 'No debug flag group set'
+
+    except IOError:
+
+        print '\nWarning: could not open \"performance_flags.ini\"'
+        print 'No debug flag group set'
+        fast_flags = ''
+
+    return debug_flags, fast_flags
