@@ -10,7 +10,7 @@ The script takes a list of source files, and scans their content to determine ho
 3. Make sure the source folder is included in the PATH environment variable. To include the folder in PATH, you can add the line `export PATH=$PATH:<path to source folder>` to your *.bashrc* file (located in the home directory).
 You can now run the script from anywhere by typing `makemake.py <arguments>`.
 ### Usage
-The arguments to `makemake.py` are the names of the files you want to create a makefile for. The arguments are separated by spaces, and any arguments containing spaces must be surrounded with double quotes. The files can either be ordinary source code files (e. g. *.c* or *.f90*) or header files (*.h*) that get included in the code.
+The arguments to `makemake.py` are the names of the files you want to create a makefile for. The arguments are separated by spaces, and any arguments containing spaces must be surrounded with double quotes. The files can either be ordinary source code files (e. g. `.c` or `.f90`) or header files (`.h`) that get included in the code.
 
 For files residing in the current working directory, only the name of the file needs to be specified. For files lying in a different folder, the absolute path (starting with `/`) or relative path (starting with `./`) must be added in front of the filename.
 
