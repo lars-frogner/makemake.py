@@ -431,6 +431,9 @@ def determine_header_dependencies(source_objects, header_objects):
     # as keys. The values are lists of paths to the headers that 
     # the source depends on.
 
+    sys.stdout.write('Finding header dependencies...')
+    sys.stdout.flush()
+
     # Find all headers that each header includes
 
     header_header_dependencies = {}
@@ -497,6 +500,8 @@ def determine_header_dependencies(source_objects, header_objects):
 
                     break
 
+    print ' Done'
+
     return source_header_dependencies
 
 def determine_object_dependencies(source_objects, header_objects, header_dependencies):
@@ -504,6 +509,9 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
     # This function creates a dictionary with the c_source objects
     # as keys. The values are lists of object names for the other
     # sources that implement functions that the source uses.
+
+    sys.stdout.write('Determining object dependencies...')
+    sys.stdout.flush()
 
     # Create a dictionary of all headers containing the sources that
     # include each header.
@@ -613,7 +621,12 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
 
         object_dependencies[source] = list(set(object_dependencies[source]))
 
+    print ' Done'
+
     # Remove unnecessary sources
+
+    sys.stdout.write('Removing independent sources...')
+    sys.stdout.flush()
 
     not_needed = []
 
@@ -640,29 +653,36 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
         source_objects.remove(remove_src)
         object_dependencies.pop(remove_src)
 
+    print ' Done'
+
     # Fix circular dependencies
+
+    sys.stdout.write('Checking for circular dependencies... ')
+    sys.stdout.flush()
 
     object_dependencies = makemake_lib.cycle_resolver().resolve_cycles(object_dependencies)
 
+    print 'Done'
+
     # Print dependency list
 
-    print '\nDependencies:'
+    dependency_text = '\nList of detected dependencies:\n'
 
     for source in sorted(object_dependencies, key=lambda source: len(object_dependencies[source] + header_dependencies[source]), reverse=True):
 
         if len(object_dependencies[source] + header_dependencies[source]) == 0:
 
-            print '\n%s: None' % (source.filename)
+            dependency_text += '\n%s: None\n' % (source.filename)
         
         else:
 
-            print '\n%s:' % (source.filename)
+            dependency_text += '\n%s:\n' % (source.filename)
         
             if len(header_dependencies[source]) > 0:
-                print '\n'.join(['-%s' % (hdr.split('/')[-1]) for hdr in header_dependencies[source]])
+                dependency_text += '\n'.join(['-%s' % (hdr.split('/')[-1]) for hdr in header_dependencies[source]]) + '\n'
 
             if len(object_dependencies[source]) > 0:
-                print '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]])
+                dependency_text += '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]]) + '\n'
 
     # Convert values from c_source instances to object names
 
@@ -670,7 +690,7 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
 
         object_dependencies[source] = [src.object_name for src in object_dependencies[source]]
 
-    return source_objects, object_dependencies
+    return source_objects, object_dependencies, dependency_text
 
 def determine_library_usage(source_objects, header_objects):
 
@@ -761,20 +781,18 @@ def generate_c_makefile_from_objects(working_dir_path, source_objects, header_pa
     # This function generates a makefile for compiling the program 
     # given by the supplied c_source objects.
 
-    print '\nGenerating makefile for executable \"%s\"...' % executable_name
+    print '\nGenerating makefile for executable \"%s\"...\n' % executable_name
 
     # Get information from files
-
-    print '\nExamining dependencies...'
 
     header_dependencies = determine_header_dependencies(source_objects, 
                                                         header_objects)
 
-    source_objects, object_dependencies = determine_object_dependencies(source_objects, 
-                                                                        header_objects,
-                                                                        header_dependencies)
+    source_objects, object_dependencies, dependency_text = determine_object_dependencies(source_objects, 
+                                                                                         header_objects,
+                                                                                         header_dependencies)
 
-    sys.stdout.write('\nGenerating makefile text...')
+    sys.stdout.write('\nGenerating makefile text... ')
     sys.stdout.flush()
 
     use_mpi, use_openmp, use_math = determine_library_usage(source_objects, 
@@ -789,20 +807,7 @@ def generate_c_makefile_from_objects(working_dir_path, source_objects, header_pa
     default_compiler = 'gcc'
     compiler = default_compiler if (compiler is None) else compiler
 
-    if compiler == 'gcc':
-
-        debug_flags = '-Og -W -Wall -fno-common -Wcast-align -Wredundant-decls -Wbad-function-cast -Wwrite-strings -Waggregate-return -Wstrict-prototypes -Wmissing-prototypes -Wextra -Wconversion -pedantic -fbounds-check'
-        fast_flags = '-O3 -ffast-math'
-
-    elif compiler == 'icc':
-
-        debug_flags = '-O0 -w3 -diag-disable:remark -traceback -check-uninit -fp-model strict -fp-speculation=off'
-        fast_flags = '-fast'
-    
-    else:
-
-        debug_flags = ''
-        fast_flags = ''
+    debug_flags, fast_flags = makemake_lib.read_flag_groups(compiler)
 
     source_object_names_string = ' '.join([source.object_name for source in source_objects])
 
@@ -902,6 +907,8 @@ help:
        post_linking_flags,
        compile_rule_string)
 
-    print ' Done'
+    print 'Done'
 
     makemake_lib.save_makefile(makefile, working_dir_path, executable_name[:-2])
+
+    print dependency_text

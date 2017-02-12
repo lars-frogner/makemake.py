@@ -9,6 +9,11 @@
 import sys, os
 import makemake_lib
 
+def abort_multiple_programs(filename, programs):
+
+    print '\nError: multiple programs in \"%s\" (%s)' % (filename, ', '.join(programs))
+    sys.exit(1)
+
 def parse_lines(lines, is_header=False, functions_to_detect=[], subroutines_to_detect=[]):
 
     # This function parses the given list of source code lines and
@@ -396,7 +401,7 @@ def determine_header_dependencies(source_objects, header_objects):
 
     # Find all headers that each header includes
 
-    sys.stdout.write('\nFinding header dependencies...')
+    sys.stdout.write('Finding header dependencies...')
     sys.stdout.flush()
 
     header_header_dependencies = {}
@@ -458,7 +463,7 @@ def determine_header_dependencies(source_objects, header_objects):
                             if other_header.main_program:
 
                                 if source.main_program:
-                                    makemake_lib.abort_multiple_programs(source.filename, [source.main_program, other_header.main_program])
+                                    abort_multiple_programs(source.filename, [source.main_program, other_header.main_program])
                                 else:
                                     source.main_program = other_header.main_program
 
@@ -504,7 +509,7 @@ def check_dependencies_presence(source_objects):
     # and that no modules or procedures are implemented multiple
     # times.
 
-    sys.stdout.write('\nMaking sure required sources are present...')
+    sys.stdout.write('Making sure required sources are present...')
     sys.stdout.flush()
 
     all_modules = []
@@ -603,7 +608,7 @@ def determine_object_dependencies(source_objects, header_dependencies):
     # as keys. The values are lists of object names for the other
     # sources that implement modules and procedures that the source uses.
 
-    sys.stdout.write('\nFinding external procedure dependencies...')
+    sys.stdout.write('Finding external procedure dependencies...')
     sys.stdout.flush()
 
     for source in source_objects:
@@ -638,7 +643,7 @@ def determine_object_dependencies(source_objects, header_dependencies):
 
     print ' Done'
 
-    sys.stdout.write('\nDetermining object dependencies...')
+    sys.stdout.write('Determining object dependencies...')
     sys.stdout.flush()
 
     object_dependencies = {}
@@ -673,10 +678,12 @@ def determine_object_dependencies(source_objects, header_dependencies):
         # Get rid of duplicate object names
         object_dependencies[source] = list(set(object_dependencies[source]))
 
-    sys.stdout.write('\nRemoving independent sources...')
-    sys.stdout.flush()
+    print ' Done'
 
     # Remove unnecessary sources
+
+    sys.stdout.write('Removing independent sources...')
+    sys.stdout.flush()
 
     not_needed = []
 
@@ -707,7 +714,7 @@ def determine_object_dependencies(source_objects, header_dependencies):
 
     # Fix circular dependencies
 
-    sys.stdout.write('\nChecking for circular dependencies... ')
+    sys.stdout.write('Checking for circular dependencies... ')
     sys.stdout.flush()
 
     object_dependencies = makemake_lib.cycle_resolver().resolve_cycles(object_dependencies)
@@ -716,23 +723,23 @@ def determine_object_dependencies(source_objects, header_dependencies):
 
     # Print dependency list
 
-    print '\nDependencies:'
+    dependency_text = '\nList of detected dependencies:\n'
 
     for source in sorted(object_dependencies, key=lambda source: len(object_dependencies[source] + header_dependencies[source]), reverse=True):
 
         if len(object_dependencies[source] + header_dependencies[source]) == 0:
 
-            print '\n%s: None' % (source.filename)
+            dependency_text += '\n%s: None\n' % (source.filename)
         
         else:
 
-            print '\n%s:' % (source.filename)
+            dependency_text += '\n%s:\n' % (source.filename)
         
             if len(header_dependencies[source]) > 0:
-                print '\n'.join(['-%s' % (hdr.split('/')[-1]) for hdr in header_dependencies[source]])
+                dependency_text += '\n'.join(['-%s' % (hdr.split('/')[-1]) for hdr in header_dependencies[source]]) + '\n'
 
             if len(object_dependencies[source]) > 0:
-                print '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]])
+                dependency_text += '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]]) + '\n'
 
     # Convert values from fortran_source instances to object names
 
@@ -740,7 +747,7 @@ def determine_object_dependencies(source_objects, header_dependencies):
 
         object_dependencies[source] = [src.object_name for src in object_dependencies[source]]
 
-    return source_objects, object_dependencies
+    return source_objects, object_dependencies, dependency_text
 
 def determine_library_usage(source_objects, header_objects):
 
@@ -824,20 +831,19 @@ def generate_fortran_makefile_from_objects(working_dir_path, source_objects, hea
     # This function generates a makefile for compiling the program 
     # given by the supplied fortran_source objects.
 
-    print '\nGenerating makefile for executable %s (%s)...' % (executable_name, program_source.filename)
+    print '\nGenerating makefile for executable %s (%s)...\n' % (executable_name, program_source.filename)
 
     # Get information from files
-
-    print '\nExamining dependencies...'
 
     header_dependencies = determine_header_dependencies(source_objects, 
                                                         header_objects)
     
     all_modules = check_dependencies_presence(source_objects)
 
-    source_objects, object_dependencies = determine_object_dependencies(source_objects, header_dependencies)
+    source_objects, object_dependencies, dependency_text = determine_object_dependencies(source_objects, 
+                                                                                         header_dependencies)
 
-    sys.stdout.write('\nGenerating makefile text...')
+    sys.stdout.write('\nGenerating makefile text... ')
     sys.stdout.flush()
 
     use_mpi, use_openmp = determine_library_usage(source_objects, header_objects)
@@ -851,20 +857,7 @@ def generate_fortran_makefile_from_objects(working_dir_path, source_objects, hea
     default_compiler = 'gfortran'
     compiler = default_compiler if (compiler is None) else compiler
 
-    if compiler == 'gfortran':
-
-        debug_flags = '-Og -Wall -Wextra -Wconversion -pedantic -Wno-tabs -fbounds-check -ffpe-trap=zero,overflow)'
-        fast_flags = '-O3'
-
-    elif compiler == 'ifort':
-
-        debug_flags = '-O0 -traceback -check all -check bounds -check uninit -fpe0 -fpe-all=0 -assume ieee_fpe_flags -fp-model strict -fp-speculation=off'
-        fast_flags = '-O3 -xHost -ipo'
-    
-    else:
-
-        debug_flags = ''
-        fast_flags = ''
+    debug_flags, fast_flags = makemake_lib.read_flag_groups(compiler)
 
     source_object_names_string = ' '.join([source.object_name for source in source_objects])
     module_names_string = ' '.join(all_modules)
@@ -959,6 +952,8 @@ help:
        fast_flags,
        compile_rule_string)
 
-    print ' Done'
+    print 'Done'
 
     makemake_lib.save_makefile(makefile, working_dir_path, executable_name[:-2])
+
+    print dependency_text
