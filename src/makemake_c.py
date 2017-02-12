@@ -260,7 +260,7 @@ class c_source:
                                      self.object_name, 
                                      filename_with_path.replace(' ', '\ '))
 
-        self.compile_rule = '\n\t$(COMP) -c $(COMP_FLAGS) $(FLAGS) \"%s\"' % filename_with_path
+        self.compile_rule = '\n\t$(COMP) -c $(COMP_FLAGS) $(MPI_COMP_FLAGS) $(FLAGS) \"%s\"' % filename_with_path
 
 class c_header:
 
@@ -786,21 +786,39 @@ def generate_c_makefile_from_objects(working_dir_path, source_objects, header_pa
 
     # Collect makefile parameters
 
-    default_compiler = 'mpicc' if use_mpi else 'gcc'
+    default_compiler = 'gcc'
     compiler = default_compiler if (compiler is None) else compiler
+
+    if compiler == 'gcc':
+
+        debug_flags = '-Og -W -Wall -fno-common -Wcast-align -Wredundant-decls -Wbad-function-cast -Wwrite-strings -Waggregate-return -Wstrict-prototypes -Wmissing-prototypes -Wextra -Wconversion -pedantic -fbounds-check'
+        fast_flags = '-O3 -ffast-math'
+
+    elif compiler == 'icc':
+
+        debug_flags = '-O0 -w3 -diag-disable:remark -traceback -check-uninit -fp-model strict -fp-speculation=off'
+        fast_flags = '-fast'
+    
+    else:
+
+        debug_flags = ''
+        fast_flags = ''
 
     source_object_names_string = ' '.join([source.object_name for source in source_objects])
 
-    parallel_flag = '-fopenmp' if use_openmp else ''
+    openmp_flag = '-fopenmp' if use_openmp else ''
     math_flag = ' -lm' if use_math else ''
 
-    compilation_flags = parallel_flag + ' '.join(['-I\"%s\"' % path for path in header_paths])
+    compilation_flags = openmp_flag + ' '.join(['-I\"%s\"' % path for path in header_paths])
 
-    pre_linking_flags = parallel_flag
+    pre_linking_flags = openmp_flag
 
     post_linking_flags = ''.join([' -L\"%s\"' % path for path in library_paths]) \
                          + math_flag \
                          + ''.join([' -l%s' % filename for filename in library_files])
+
+    mpi_comp_flags = '$(shell mpicc --showme:compile)' if use_mpi else ''
+    mpi_link_flags = '$(shell mpicc --showme:link)' if use_mpi else ''
 
     # Create makefile text
 
@@ -829,9 +847,11 @@ EXECNAME = %s
 OBJECTS = %s
 COMP_FLAGS = %s
 LINK_FLAGS = %s
+MPI_COMPILE_FLAGS = %s
+MPI_LINK_FLAGS = %s
 
 # Make sure certain rules are not activated by the presence of files
-.PHONY: all debug fast profile set_debug_flags set_fast_flags set_profile_flags gprof clean
+.PHONY: all debug fast profile set_debug_flags set_fast_flags set_profile_flags clean gprof help
 
 # Define default target group
 all: $(EXECNAME)
@@ -843,11 +863,11 @@ profile: set_profile_flags $(EXECNAME)
 
 # Defines appropriate compiler flags for debugging
 set_debug_flags:
-\t$(eval COMP_FLAGS = $(COMP_FLAGS) -Og -W -Wall -fno-common -Wcast-align -Wredundant-decls -Wbad-function-cast -Wwrite-strings -Waggregate-return -Wstrict-prototypes -Wmissing-prototypes -Wextra -Wconversion -pedantic -fbounds-check)
+\t$(eval COMP_FLAGS = $(COMP_FLAGS) %s)
 
 # Defines appropriate compiler flags for high performance
 set_fast_flags:
-\t$(eval COMP_FLAGS = $(COMP_FLAGS) -O3 -ffast-math)
+\t$(eval COMP_FLAGS = $(COMP_FLAGS) %s)
 
 # Defines appropriate compiler flags for profiling
 set_profile_flags:
@@ -856,7 +876,7 @@ set_profile_flags:
 
 # Rule for linking object files
 $(EXECNAME): $(OBJECTS)
-\t$(COMP) $(LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s%s
+\t$(COMP) $(LINK_FLAGS) $(MPI_LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s%s
 
 # Action for removing all auxiliary files
 clean:
@@ -870,11 +890,15 @@ gprof:
 help:
 \t@echo "Usage:\\nmake <argument 1> <argument 2> ...\\n\\nArguments:\\n<none>:  Compiles with no compiler flags.\\ndebug:   Compiles with flags useful for debugging.\\nfast:    Compiles with flags for high performance.\\nprofile: Compiles with flags for profiling.\\ngprof:   Displays the profiling results with gprof.\\nclean:   Deletes auxiliary files.\\nhelp:    Displays this help text.\\n\\nTo compile with additional flags, add the argument\\nFLAGS=\\"<flags>\\""''' \
     % (executable_name[:-2],
-       compiler,
+       'mpicc' if use_mpi else compiler,
        executable_name,
        source_object_names_string,
        compilation_flags,
        pre_linking_flags,
+       mpi_comp_flags,
+       mpi_link_flags,
+       debug_flags,
+       fast_flags,
        post_linking_flags,
        compile_rule_string)
 
