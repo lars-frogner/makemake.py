@@ -7,8 +7,8 @@ The script takes a list of source files, and scans their content to determine ho
 ### Installation
 1. Download the files in the *src* folder to a destination of your choice.
 2. Make sure *makemake.py* is allowed to be executed. To make it executable, use `chmod +x makemake.py`.
-3. Make sure the source folder is included in the PATH environment variable. To include the folder in PATH, you can add the line `export PATH=$PATH:<path to source folder>` to your *.bashrc* file (located in the home directory).
-You can now run the script from anywhere by typing `makemake.py <arguments>`.
+3. Make sure the source folder is included in the PATH environment variable. To include the folder in PATH, you can add the line `export PATH=$PATH:<path to source folder>` to your *.bashrc* file (located in the home directory). 
+4. You can now run the script from anywhere by typing `makemake.py <arguments>`.
 
 ### Usage
 The arguments to `makemake.py` are the names of the files you want to create a makefile for. The arguments are separated by spaces, and any arguments containing spaces must be surrounded with double quotes. The files can either be ordinary source code files (e. g. `.c` or `.f90`) or header files (`.h`) that get included in the code.
