@@ -183,7 +183,7 @@ flag_args = extract_flag_args(arg_list, valid_file_endings)
 flag_args = separate_flags(flag_args, combinable_flags, incombinable_flags)
 
 generate_wrapper = 'w' in flag_args
-compiler = None if not ('c' in flag_args) else flag_args['c']
+compiler = None if not ('c' in flag_args) else flag_args['c'][0]
 source_paths = [] if not ('S' in flag_args) else flag_args['S']
 header_paths = [] if not ('H' in flag_args) else flag_args['H']
 library_paths = [] if not ('L' in flag_args) else flag_args['L']
