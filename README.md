@@ -11,13 +11,13 @@ The script takes a list of source files, and scans their content to determine ho
 4. You can now run the script from anywhere by typing `makemake.py <arguments>`.
 
 ### Usage
-The arguments to `makemake.py` are the names of the files you want to create a makefile for. The arguments are separated by spaces, and any arguments containing spaces must be surrounded with double quotes. The files can either be ordinary source code files (e. g. `.c` or `.f90`) or header files (`.h`) that get included in the code.
+The arguments to *makemake.py* are the names of the files you want to create a makefile for. The arguments are separated by spaces, and any arguments containing spaces must be surrounded with double quotes. The files can either be ordinary source code files (e. g. `.c` or `.f90`) or header files (`.h`) that get included in the code.
 
 For files residing in the current working directory, only the name of the file needs to be specified. For files lying in a different folder, the absolute path (starting with `/`) or relative path (starting with `./`) must be added in front of the filename.
 
 An alternative to this is to specify one or more search paths. For source files this is done with the `-S` flag. Just add `-S` somewhere in the argument list, followed by the (absolute or relative) paths that you want to include in the list of search paths. Then, if the script fails to find a source file in the working directory, it automatically searches the paths specified in the list of search paths. This is useful if you have several source files residing in the same directory. There is an equivalent `-H` flag for header file search paths, and an `-L` flag for library search paths. These can all be combined arbitrarily, so e. g. `-SH` would specify paths to search for both source and header files.
 
-The script will automatically recognize the programming language based on the file extension of the source files. You can specify the compiler to use with the `-c` flag. Just write the name of the compiler directly following the flag. The default option will be a compiler from the GNU Compiler Collection, i. e. *gcc* for C and *gfortran* for Fortran.
+The script will automatically recognize the programming language based on the file extension of the source files. You can specify the compiler to use with the `-c` flag. Just write the name of the compiler directly following the flag. The default option will be a compiler from the GNU Compiler Collection, i. e. `gcc` for C and `gfortran` for Fortran.
 
 If compiling the group of source files will result in several executables, one makefile is generated for each executable. Note however that it is not recommended to include multiple executable producing sources that have different dependecies in the same call to makemake.py, as this might cause the script to detect apparent dependencies that you don't want.
 
