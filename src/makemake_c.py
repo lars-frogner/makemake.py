@@ -202,7 +202,7 @@ def get_declared_functions(text):
 
         paran_splitted = statement.split('(')
 
-        if len(paran_splitted) > 0:
+        if len(paran_splitted) > 1:
 
             pre_paran = paran_splitted[0]
 
@@ -245,6 +245,9 @@ class c_source:
 
         if len(self.included_headers) > 0:
             print 'Included (non-standard) headers:\n' + '\n'.join([('-%s' % header_name) for header_name in self.included_headers])
+
+        if self.use_math:
+            print 'Uses math library'
 
         if self.use_mpi:
             print 'Uses MPI'
@@ -297,6 +300,9 @@ class c_header:
 
         if len(self.declared_functions) > 0:
             print 'Declared functions:\n' + '\n'.join([('-%s' % function_name) for function_name in self.declared_functions])
+
+        if self.use_math:
+            print 'Uses math library'
 
         if self.use_mpi:
             print 'Uses MPI'
@@ -549,7 +555,7 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
                 # Split source text at the function name
                 func_splitted = source.clean_text.split(function + '(')
 
-                if len(func_splitted) < 1: continue
+                if len(func_splitted) < 2: continue
 
                 is_producer = False
                 is_consumer = False
@@ -562,9 +568,18 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
 
                     paran_splitted = substring.split(')')
 
-                    if len(paran_splitted) < 1: continue
+                    if len(paran_splitted) < 2: continue
 
-                    character_after = paran_splitted[1].strip()[0]
+                    idx = 0
+
+                    for element in paran_splitted:
+
+                        if '(' in element:
+                            idx += 1
+                        else:
+                            break
+
+                    character_after = paran_splitted[idx+1].strip()[0]
 
                     # If the next character is a curly bracket, the function is implmented
                     if character_after == '{':
@@ -583,6 +598,11 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
                 elif is_consumer and not is_producer:
 
                     producer_consumer_dict[header][function]['consumers'].append(source)
+
+
+        #print '-' + header.filename
+        #for function in producer_consumer_dict[header]:
+        #    print function, [src.filename for src in producer_consumer_dict[header][function]['consumers']]
 
     # Make sure that no function was implemented multiple times
     for header in header_objects:
@@ -625,7 +645,7 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
 
     # Remove unnecessary sources
 
-    sys.stdout.write('Removing independent sources...')
+    '''sys.stdout.write('Removing independent sources...')
     sys.stdout.flush()
 
     not_needed = []
@@ -653,7 +673,7 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
         source_objects.remove(remove_src)
         object_dependencies.pop(remove_src)
 
-    print ' Done'
+    print ' Done' '''
 
     # Fix circular dependencies
 
