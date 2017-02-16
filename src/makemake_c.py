@@ -646,7 +646,7 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
 
     # Remove unnecessary sources
 
-    '''sys.stdout.write('Removing independent sources...')
+    sys.stdout.write('Removing independent sources...')
     sys.stdout.flush()
 
     not_needed = []
@@ -674,7 +674,7 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
         source_objects.remove(remove_src)
         object_dependencies.pop(remove_src)
 
-    print ' Done' '''
+    print ' Done'
 
     # Fix circular dependencies
 
@@ -837,11 +837,11 @@ def generate_c_makefile_from_objects(working_dir_path, source_objects, header_pa
 
     compilation_flags = openmp_flag + ' '.join(['-I\"%s\"' % path for path in header_paths])
 
-    pre_linking_flags = openmp_flag
+    linking_flags = openmp_flag
 
-    post_linking_flags = ''.join([' -L\"%s\"' % path for path in library_paths]) \
-                         + math_flag \
-                         + ''.join([' -l%s' % filename for filename in library_files])
+    library_flags = ''.join([' -L\"%s\"' % path for path in library_paths]) \
+                    + math_flag \
+                    + ''.join([' -l%s' % filename for filename in library_files])
 
     mpi_comp_flags = '$(shell mpicc --showme:compile)' if use_mpi else ''
     mpi_link_flags = '$(shell mpicc --showme:link)' if use_mpi else ''
@@ -921,12 +921,12 @@ help:
        executable_name,
        source_object_names_string,
        compilation_flags,
-       pre_linking_flags,
+       linking_flags,
        mpi_comp_flags,
        mpi_link_flags,
        debug_flags,
        fast_flags,
-       post_linking_flags,
+       library_flags,
        compile_rule_string)
 
     print 'Done'
