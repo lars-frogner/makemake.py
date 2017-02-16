@@ -13,7 +13,7 @@ The script takes a list of source files, and scans their content to determine ho
 ## Usage
 You can run *makemake.py* without any arguments to get usage instructions in a compact format. Here is a more in-depth description.
 #### Arguments
-The arguments to *makemake.py* are the names of the files you want to create a makefile for. The arguments are separated by spaces, and any arguments containing spaces must be surrounded with double quotes. The files can either be ordinary source code files (e. g. `.c` or `.f90`), header files (`.h`) that get included in the code or library files (`.a` or `.so`) that are used (C only).
+The arguments to *makemake.py* are the names of the files you want to create a makefile for. The arguments are separated by spaces, and any arguments containing spaces must be surrounded with double quotes. The files can either be ordinary source code files (e. g. `.c` or `.f90`), header files (`.h`) that get included in the code or library files (`.a` or `.so`) that are used.
 
 For files residing in the current working directory, only the name of the file needs to be specified. For files lying in a different folder, the absolute path (starting with `/`) or relative path (starting with `./`) must be added in front of the filename.
 
