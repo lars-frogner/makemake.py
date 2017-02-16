@@ -143,9 +143,6 @@ def detect_language(arg_list, valid_fortran_endings, valid_c_endings):
             elif not language == 'c':
                 abort_language()
 
-        else:
-            abort_ending(filename)
-
     return language
 
 if len(sys.argv) < 2:
