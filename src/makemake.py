@@ -106,11 +106,14 @@ def separate_flags(flag_args, combinable_flags, incombinable_flags):
 
             arguments = new_flag_args.pop(flag)
 
-            for cflag in combinable_flags:
+            for cflag in flag:
 
-                if cflag in flag:
+                if cflag in combinable_flags:
 
-                    new_flag_args[cflag] = arguments
+                    if cflag in new_flag_args:
+                        new_flag_args[cflag] += list(arguments)
+                    else:
+                        new_flag_args[cflag] = list(arguments)
 
     return new_flag_args
 
@@ -184,9 +187,9 @@ flag_args = separate_flags(flag_args, combinable_flags, incombinable_flags)
 
 generate_wrapper = 'w' in flag_args
 compiler = None if not ('c' in flag_args) else flag_args['c'][0]
-source_paths = [] if not ('S' in flag_args) else flag_args['S']
-header_paths = [] if not ('H' in flag_args) else flag_args['H']
-library_paths = [] if not ('L' in flag_args) else flag_args['L']
+source_paths = [] if not ('S' in flag_args) else list(set(flag_args['S']))
+header_paths = [] if not ('H' in flag_args) else list(set(flag_args['H']))
+library_paths = [] if not ('L' in flag_args) else list(set(flag_args['L']))
 
 convert_relative_paths(working_dir_path, source_paths)
 convert_relative_paths(working_dir_path, header_paths)
