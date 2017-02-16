@@ -364,7 +364,7 @@ def find_missing_headers(working_dir_path, header_paths, source_objects, header_
 
     return header_paths, header_objects
 
-def process_files(working_dir_path, source_paths, header_paths, source_files, header_files):
+def process_files(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files):
 
     # This function creates a list of fortran_source instances from the given 
     # lists of filenames and paths, and also returns a list of fortran_header
@@ -392,7 +392,29 @@ def process_files(working_dir_path, source_paths, header_paths, source_files, he
 
     header_paths = list(set(header_paths + extra_header_paths))
 
-    return source_objects, header_paths, header_objects
+    # Process library files
+
+    extra_library_paths = []
+
+    for i in xrange(len(library_files)):
+
+        has_determined_path, determined_path, filename = makemake_lib.search_for_file(library_files[i], 
+                                                                                      working_dir_path, 
+                                                                                      library_paths)[2:]
+
+        if len(filename) < 3 or filename[:3] != 'lib':
+            abort_invalid_lib(filename)
+
+        filename = '.'.join(filename.split('.')[:-1])
+
+        library_files[i] = filename[3:]
+
+        if has_determined_path:
+            extra_library_paths.append(determined_path)
+
+    library_paths = list(set(library_paths + extra_library_paths))
+
+    return source_objects, header_paths, header_objects, library_paths
 
 def determine_header_dependencies(source_objects, header_objects):
 
@@ -791,18 +813,20 @@ def gather_compile_rules(source_objects, header_dependencies, object_dependencie
 
     return ''.join(compile_rules)
 
-def generate_fortran_makefile_from_files(working_dir_path, source_paths, header_paths, source_files, header_files, compiler):
+def generate_fortran_makefile_from_files(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files, compiler):
 
     # This function generates makefiles for compiling the programs 
     # in the given Fortran source files.
 
     print '\nCollecting files...'
 
-    source_objects, header_paths, header_objects = process_files(working_dir_path, 
-                                                                 source_paths, 
-                                                                 header_paths,
-                                                                 source_files,
-                                                                 header_files)
+    source_objects, header_paths, header_objects, library_paths = process_files(working_dir_path, 
+                                                                                source_paths, 
+                                                                                header_paths,
+                                                                                library_paths,
+                                                                                source_files,
+                                                                                header_files,
+                                                                                library_files)
 
     program_sources = []
 
@@ -825,9 +849,9 @@ def generate_fortran_makefile_from_files(working_dir_path, source_paths, header_
         new_source_objects = [program_source] + filtered_source_objects
         executable_name = program_source.main_program + '.x'
 
-        generate_fortran_makefile_from_objects(working_dir_path, new_source_objects, header_paths, header_objects, program_source, executable_name, compiler)
+        generate_fortran_makefile_from_objects(working_dir_path, new_source_objects, header_paths, library_paths, header_objects, library_files, program_source, executable_name, compiler)
 
-def generate_fortran_makefile_from_objects(working_dir_path, source_objects, header_paths, header_objects, program_source, executable_name, compiler):
+def generate_fortran_makefile_from_objects(working_dir_path, source_objects, header_paths, library_paths, header_objects, library_files, program_source, executable_name, compiler):
 
     # This function generates a makefile for compiling the program 
     # given by the supplied fortran_source objects.
@@ -866,7 +890,11 @@ def generate_fortran_makefile_from_objects(working_dir_path, source_objects, hea
     openmp_flag = '-fopenmp' if use_openmp else ''
 
     compilation_flags = openmp_flag + ' '.join(['-I\"%s\"' % path for path in header_paths])
+
     linking_flags = openmp_flag
+
+    library_flags = ''.join([' -L\"%s\"' % path for path in library_paths]) \
+                    + ''.join([' -l%s' % filename for filename in library_files])
 
     mpi_comp_flags = '$(shell mpifort --showme:compile)' if use_mpi else ''
     mpi_link_flags = '$(shell mpifort --showme:link)' if use_mpi else ''
@@ -927,7 +955,7 @@ set_profile_flags:
 
 # Rule for linking object files
 $(EXECNAME): $(OBJECTS)
-\t$(COMP) $(LINK_FLAGS) $(MPI_LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s
+\t$(COMP) $(LINK_FLAGS) $(MPI_LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s%s
 
 # Action for removing all auxiliary files
 clean:
@@ -952,6 +980,7 @@ help:
        mpi_link_flags,
        debug_flags,
        fast_flags,
+       library_flags,
        compile_rule_string)
 
     print 'Done'
