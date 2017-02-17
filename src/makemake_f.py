@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 16.02.2017 by Lars Frogner
+# Last modified 17.02.2017 by Lars Frogner
 #
 import sys, os
 import datetime
@@ -242,7 +242,7 @@ class fortran_source:
         self.name = '.'.join(self.filename.split('.')[:-1])
         self.object_name = self.name + '.o'
 
-        sys.stdout.write('Parsing ...')
+        sys.stdout.write('Parsing...')
         sys.stdout.flush()
 
         f = open(filename_with_path, 'r')
@@ -253,6 +253,11 @@ class fortran_source:
 
         self.main_program = False if len(programs) == 0 else programs[0]
         if len(programs) > 1: abort_multiple_programs(self.filename, programs)
+
+        self.dependency_descripts = {}
+
+        for header_name in self.included_headers:
+            self.dependency_descripts[header_name] = 'included directly'
 
         print ' Done'
 
@@ -490,6 +495,13 @@ def determine_header_dependencies(source_objects, header_objects):
                                 else:
                                     source.main_program = other_header.main_program
 
+                            for included_header in other_header.included_headers:
+
+                                if not included_header in source.included_headers:
+
+                                    source.included_headers.append(included_header)
+                                    source.dependency_descripts[included_header] = 'included indirectly through %s' % (other_header.filename)
+
                             for mod in other_header.modules:
 
                                 if not mod in source.modules:
@@ -686,7 +698,13 @@ def determine_object_dependencies(source_objects, header_dependencies):
 
                     # Add object name if it has the correct module
                     if module in other_source.modules:
+
                         object_dependencies[source].append(other_source)
+
+                        if other_source.filename in source.dependency_descripts:
+                            source.dependency_descripts[other_source.filename] += ', %s' % module
+                        else:
+                            source.dependency_descripts[other_source.filename] = 'through %s' % module
 
         # Repeat for procedure dependencies
         for procedure in source.procedure_dependencies:
@@ -696,7 +714,13 @@ def determine_object_dependencies(source_objects, header_dependencies):
                 if not (other_source is source):
 
                     if procedure in (other_source.external_functions + other_source.external_subroutines):
+
                         object_dependencies[source].append(other_source)
+
+                        if other_source.filename in source.dependency_descripts:
+                            source.dependency_descripts[other_source.filename] += ', %s()' % procedure
+                        else:
+                            source.dependency_descripts[other_source.filename] = 'through %s()' % procedure
 
         # Get rid of duplicate object names
         object_dependencies[source] = list(set(object_dependencies[source]))
@@ -746,23 +770,23 @@ def determine_object_dependencies(source_objects, header_dependencies):
 
     # Print dependency list
 
-    dependency_text = '\nList of detected dependencies:\n'
+    dependency_text = '\nList of detected dependencies:'
 
     for source in sorted(object_dependencies, key=lambda source: len(object_dependencies[source] + header_dependencies[source]), reverse=True):
 
         if len(object_dependencies[source] + header_dependencies[source]) == 0:
 
-            dependency_text += '\n%s: None\n' % (source.filename)
+            dependency_text += '\n' + '\n%s: None' % (source.filename)
         
         else:
 
-            dependency_text += '\n%s:\n' % (source.filename)
+            dependency_text += '\n' + '\n%s:' % (source.filename)
         
             if len(header_dependencies[source]) > 0:
-                dependency_text += '\n'.join(['-%s' % (hdr.split('/')[-1]) for hdr in header_dependencies[source]]) + '\n'
+                dependency_text += '\n' + '\n'.join(['-%s [%s]' % (hdr.split('/')[-1], source.dependency_descripts[hdr.split('/')[-1]]) for hdr in header_dependencies[source]])
 
             if len(object_dependencies[source]) > 0:
-                dependency_text += '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]]) + '\n'
+                dependency_text += '\n' + '\n'.join(['-%s [%s]' % (src.filename, source.dependency_descripts[src.filename]) for src in object_dependencies[source]])
 
     # Convert values from fortran_source instances to object names
 
@@ -985,6 +1009,6 @@ help:
 
     print 'Done'
 
-    makemake_lib.save_makefile(makefile, working_dir_path, executable_name[:-2])
-
     print dependency_text
+
+    makemake_lib.save_makefile(makefile, working_dir_path, executable_name[:-2])
