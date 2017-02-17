@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 16.02.2017 by Lars Frogner
+# Last modified 17.02.2017 by Lars Frogner
 #
 import sys, os
 import datetime
@@ -231,7 +231,7 @@ class c_source:
         self.name = '.'.join(self.filename.split('.')[:-1])
         self.object_name = self.name + '.o'
 
-        sys.stdout.write('Parsing ...')
+        sys.stdout.write('Parsing...')
         sys.stdout.flush()
 
         f = open(filename_with_path, 'r')
@@ -241,6 +241,11 @@ class c_source:
         text = clean_file_text(text)
 
         self.included_headers, self.use_math, self.use_mpi, self.use_openmp, self.is_main = get_included_headers(text)
+
+        self.dependency_descripts = {}
+
+        for header_name in self.included_headers:
+            self.dependency_descripts[header_name] = 'included directly'
 
         print ' Done'
 
@@ -279,7 +284,7 @@ class c_header:
 
         self.filename = filename_with_path.split('/')[-1]
 
-        sys.stdout.write('Parsing ...')
+        sys.stdout.write('Parsing...')
         sys.stdout.flush()
 
         f = open(filename_with_path, 'r')
@@ -504,6 +509,7 @@ def determine_header_dependencies(source_objects, header_objects):
                                 if not included_header in source.included_headers:
 
                                     source.included_headers.append(included_header)
+                                    source.dependency_descripts[included_header] = 'included indirectly through %s' % (other_header.filename)
 
                     break
 
@@ -580,15 +586,16 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
                         else:
                             break
 
-                    character_after = paran_splitted[idx+1].strip()[0]
+                    character_after = paran_splitted[idx+1].strip()
+                    if len(character_after) > 0: character_after = character_after[0]
 
                     # If the next character is a curly bracket, the function is implmented
                     if character_after == '{':
 
                         is_producer = True
                     
-                    # If the next character is a semicolon, the function is called
-                    elif character_after == ';':
+                    # Otherwise, the function is called
+                    else:
                     
                         is_consumer = True
 
@@ -635,8 +642,13 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
 
                         if len(producer_consumer_dict[header][function]['producers']) > 0:
 
-                            object_dependencies[source]\
-                            .append(producer_consumer_dict[header][function]['producers'][0])
+                            producer_source = producer_consumer_dict[header][function]['producers'][0]
+                            object_dependencies[source].append(producer_source)
+
+                            if producer_source.filename in source.dependency_descripts:
+                                source.dependency_descripts[producer_source.filename] += ', %s()' % function
+                            else:
+                                source.dependency_descripts[producer_source.filename] = 'through %s()' % function
 
                         break
 
@@ -687,23 +699,23 @@ def determine_object_dependencies(source_objects, header_objects, header_depende
 
     # Print dependency list
 
-    dependency_text = '\nList of detected dependencies:\n'
+    dependency_text = '\nList of detected dependencies:'
 
     for source in sorted(object_dependencies, key=lambda source: len(object_dependencies[source] + header_dependencies[source]), reverse=True):
 
         if len(object_dependencies[source] + header_dependencies[source]) == 0:
 
-            dependency_text += '\n%s: None\n' % (source.filename)
+            dependency_text += '\n' + '\n%s: None' % (source.filename)
         
         else:
 
-            dependency_text += '\n%s:\n' % (source.filename)
+            dependency_text += '\n' + '\n%s:' % (source.filename)
         
             if len(header_dependencies[source]) > 0:
-                dependency_text += '\n'.join(['-%s' % (hdr.split('/')[-1]) for hdr in header_dependencies[source]]) + '\n'
+                dependency_text += '\n' + '\n'.join(['-%s [%s]' % (hdr.split('/')[-1], source.dependency_descripts[hdr.split('/')[-1]]) for hdr in header_dependencies[source]])
 
             if len(object_dependencies[source]) > 0:
-                dependency_text += '\n'.join(['-%s' % (src.filename) for src in object_dependencies[source]]) + '\n'
+                dependency_text += '\n' + '\n'.join(['-%s [%s]' % (src.filename, source.dependency_descripts[src.filename]) for src in object_dependencies[source]])
 
     # Convert values from c_source instances to object names
 
@@ -931,6 +943,6 @@ help:
 
     print 'Done'
 
-    makemake_lib.save_makefile(makefile, working_dir_path, executable_name[:-2])
-
     print dependency_text
+
+    makemake_lib.save_makefile(makefile, working_dir_path, executable_name[:-2])
