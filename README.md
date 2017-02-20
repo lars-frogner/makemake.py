@@ -6,7 +6,7 @@ The script takes a list of source files, and scans their content to determine ho
 **Important:** With any automatically generated makefile there is always a chance that some dependencies have been handled incorrectly. This can result in sources not getting recompiled when they should, leading to unexpected behaviour when the program is run. It is therefore important that you always verify the list of dependencies printed by makemake.py when it generates a new makefile.
 
 ## Requirements
-To run the script you only need to have Python 2.7 installed. However, to use the makefiles you of course need to have GNU Make as well. On Linux and OS X it should be included by default. On Windows you can get it through [GnuWin32](http://gnuwin32.sourceforge.net/packages/make.htm). It is also included in [MinGW](http://www.mingw.org/) (in that case the program to run is called `mingw32-make` rather than just `make`).
+To run the script you only need to have Python 2.7 installed. To use the makefiles you need to have GNU Make as well. On Linux and OS X it should be installed by default. On Windows you can get it through [GnuWin32](http://gnuwin32.sourceforge.net/packages/make.htm). It is also included in [MinGW](http://www.mingw.org/) (in that case the program to run is called `mingw32-make` rather than just `make`).
 
 ## Installation
 #### Linux/OS X
@@ -14,6 +14,7 @@ To run the script you only need to have Python 2.7 installed. However, to use th
 2. Make sure the source folder is included in the PATH environment variable. To include the folder in PATH, you can add the line `export PATH=$PATH:<path to source folder>` to your *.bashrc* file (if you use Linux) or your *.bash_profile* file (if you use OS X). Either should be located in the home directory.
 3. Make sure *makemake.py* is allowed to be executed. To make it executable, use `chmod +x makemake.py`.
 4. You can now run the script from anywhere by typing `makemake.py <arguments>`.
+
 #### Windows
 1. Download the files in the *src* folder to a destination of your choice. If you use Git, you can just clone the repository.
 2. Make sure the source folder is included in the PATH environment variable. To include the folder in PATH, go to Control Panel -> System and Security -> System -> Advanced system settings. Click on "Environment Variables...", select "Path" and click "Edit...". Now add the path to the *src* folder.
