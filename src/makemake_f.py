@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 17.02.2017 by Lars Frogner
+# Last modified 19.02.2017 by Lars Frogner
 #
 import sys, os
 import datetime
@@ -75,7 +75,7 @@ def parse_lines(lines, is_header=False, functions_to_detect=[], subroutines_to_d
             # Check for program declaration
             if first_word == 'program':
 
-                programs.append(second_word)
+                programs.append(words_with_case[1])
                 inside = 'program'
                 unknown_in_or_out = False
 
@@ -232,13 +232,13 @@ class fortran_source:
     # about which programs, modules, external procedures and 
     # dependencies it contains.
 
-    def __init__(self, filename_with_path, is_header=False):
+    def __init__(self, filename_with_path, is_header=False, delete_cmd='', delete_trail=''):
 
         self.filename_with_path = filename_with_path
 
-        file_path = '/'.join(filename_with_path.split('/')[:-1])
+        file_path = os.sep.join(filename_with_path.split(os.sep)[:-1])
 
-        self.filename = filename_with_path.split('/')[-1]
+        self.filename = filename_with_path.split(os.sep)[-1]
         self.name = '.'.join(self.filename.split('.')[:-1])
         self.object_name = self.name + '.o'
 
@@ -296,8 +296,8 @@ class fortran_source:
                                      filename_with_path.replace(' ', '\ '),
                                      (' ' if len(self.module_dependencies) != 0 else '') + ' '.join(self.module_dependencies))
 
-        self.compile_rule = '\n%s\t$(COMP) -c $(COMP_FLAGS) $(MPI_COMP_FLAGS) $(FLAGS) \"%s\"' \
-                            % (('\trm -f %s\n' % (' '.join(self.modules))) if len(self.modules) != 0 else '', 
+        self.compile_rule = '\n%s\t$(COMP) -c $(COMP_FLAGS) $(FLAGS) \"%s\"' \
+                            % (('\t%s %s%s\n' % (delete_cmd, ' '.join(self.modules), delete_trail)) if len(self.modules) != 0 else '', 
                                filename_with_path)
 
 def process_headers(working_dir_path, header_paths, header_files, abort_on_fail=True):
@@ -369,7 +369,7 @@ def find_missing_headers(working_dir_path, header_paths, source_objects, header_
 
     return header_paths, header_objects
 
-def process_files(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files):
+def process_files(working_dir_path, source_paths, header_paths, library_paths, source_files, header_files, library_files, delete_cmd, delete_trail):
 
     # This function creates a list of fortran_source instances from the given 
     # lists of filenames and paths, and also returns a list of fortran_header
@@ -389,7 +389,7 @@ def process_files(working_dir_path, source_paths, header_paths, library_paths, s
                                                           working_dir_path, 
                                                           source_paths)[1]
 
-        source_objects.append(fortran_source(filename_with_path))
+        source_objects.append(fortran_source(filename_with_path, delete_cmd=delete_cmd, delete_trail=delete_trail))
 
     # Add missing headers
 
@@ -783,7 +783,7 @@ def determine_object_dependencies(source_objects, header_dependencies):
             dependency_text += '\n' + '\n%s:' % (source.filename)
         
             if len(header_dependencies[source]) > 0:
-                dependency_text += '\n' + '\n'.join(['-%s [%s]' % (hdr.split('/')[-1], source.dependency_descripts[hdr.split('/')[-1]]) for hdr in header_dependencies[source]])
+                dependency_text += '\n' + '\n'.join(['-%s [%s]' % (hdr.split(os.sep)[-1], source.dependency_descripts[hdr.split(os.sep)[-1]]) for hdr in header_dependencies[source]])
 
             if len(object_dependencies[source]) > 0:
                 dependency_text += '\n' + '\n'.join(['-%s [%s]' % (src.filename, source.dependency_descripts[src.filename]) for src in object_dependencies[source]])
@@ -842,6 +842,11 @@ def generate_fortran_makefile_from_files(working_dir_path, source_paths, header_
     # This function generates makefiles for compiling the programs 
     # in the given Fortran source files.
 
+    is_win = sys.platform == 'win32'
+    delete_cmd = 'del /F' if is_win else 'rm -f'
+    delete_trail = ' 2>nul' if is_win else ''
+    exec_ending = '.exe' if is_win else '.x'
+
     print '\nCollecting files...'
 
     source_objects, header_paths, header_objects, library_paths = process_files(working_dir_path, 
@@ -850,7 +855,9 @@ def generate_fortran_makefile_from_files(working_dir_path, source_paths, header_
                                                                                 library_paths,
                                                                                 source_files,
                                                                                 header_files,
-                                                                                library_files)
+                                                                                library_files,
+                                                                                delete_cmd,
+                                                                                delete_trail)
 
     program_sources = []
 
@@ -866,16 +873,16 @@ def generate_fortran_makefile_from_files(working_dir_path, source_paths, header_
     if len(program_sources) == 0:
         makemake_lib.abort_no_something_file('program')
 
-    print '\nPrograms to generate makefiles for:\n%s' % ('\n'.join(['-%s (%s)' % (src.main_program + '.x', src.filename) for src in program_sources]))
+    print '\nPrograms to generate makefiles for:\n%s' % ('\n'.join(['-%s (%s)' % (src.main_program + exec_ending, src.filename) for src in program_sources]))
 
     for program_source in program_sources:
 
         new_source_objects = [program_source] + filtered_source_objects
-        executable_name = program_source.main_program + '.x'
+        executable_name = program_source.main_program + exec_ending
 
-        generate_fortran_makefile_from_objects(working_dir_path, new_source_objects, header_paths, library_paths, header_objects, library_files, program_source, executable_name, compiler)
+        generate_fortran_makefile_from_objects(working_dir_path, new_source_objects, header_paths, library_paths, header_objects, library_files, program_source, executable_name, compiler, is_win, delete_cmd, delete_trail)
 
-def generate_fortran_makefile_from_objects(working_dir_path, source_objects, header_paths, library_paths, header_objects, library_files, program_source, executable_name, compiler):
+def generate_fortran_makefile_from_objects(working_dir_path, source_objects, header_paths, library_paths, header_objects, library_files, program_source, executable_name, compiler, is_win, delete_cmd, delete_trail):
 
     # This function generates a makefile for compiling the program 
     # given by the supplied fortran_source objects.
@@ -920,8 +927,10 @@ def generate_fortran_makefile_from_objects(working_dir_path, source_objects, hea
     library_flags = ''.join([' -L\"%s\"' % path for path in library_paths]) \
                     + ''.join([' -l%s' % filename for filename in library_files])
 
-    mpi_comp_flags = '$(shell mpifort --showme:compile)' if use_mpi else ''
-    mpi_link_flags = '$(shell mpifort --showme:link)' if use_mpi else ''
+    if is_win:
+        help_text = 'Usage: & echo make ^<argument 1^> ^<argument 2^> ... & echo. & echo Arguments: & echo ^<none^>:  Compiles with no compiler flags. & echo debug:   Compiles with flags useful for debugging. & echo fast:    Compiles with flags for high performance. & echo profile: Compiles with flags for profiling. & echo gprof:   Displays the profiling results with gprof. & echo clean:   Deletes auxiliary files. & echo help:    Displays this help text. & echo. & echo To compile with additional flags, add the argument & echo FLAGS="<flags>"'
+    else:
+        help_text = '"Usage:\\nmake <argument 1> <argument 2> ...\\n\\nArguments:\\n<none>:    Compiles with no compiler flags.\\ndebug:   Compiles with flags useful for debugging.\\nfast:    Compiles with flags for high performance.\\nprofile: Compiles with flags for profiling.\\ngprof:   Displays the profiling results with gprof.\\nclean:   Deletes auxiliary files.\\nhelp:    Displays this help text.\\n\\nTo compile with additional flags, add the argument\\nFLAGS=\\"<flags>\\""'
 
     # Create makefile
     makefile = '''#$%s
@@ -950,8 +959,6 @@ OBJECTS = %s
 MODULES = %s
 COMP_FLAGS = %s
 LINK_FLAGS = %s
-MPI_COMPILE_FLAGS = %s
-MPI_LINK_FLAGS = %s
 
 # Make sure certain rules are not activated by the presence of files
 .PHONY: all debug fast profile set_debug_flags set_fast_flags set_profile_flags clean gprof help
@@ -979,11 +986,11 @@ set_profile_flags:
 
 # Rule for linking object files
 $(EXECNAME): $(OBJECTS)
-\t$(COMP) $(LINK_FLAGS) $(MPI_LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s%s
+\t$(COMP) $(LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS)%s%s
 
 # Action for removing all auxiliary files
 clean:
-\trm -f $(OBJECTS) $(MODULES)
+\t%s $(OBJECTS) $(MODULES)%s
 
 # Action for reading profiling results
 gprof:
@@ -991,7 +998,7 @@ gprof:
 
 # Action for printing help text
 help:
-\t@echo "Usage:\\nmake <argument 1> <argument 2> ...\\n\\nArguments:\\n<none>:    Compiles with no compiler flags.\\ndebug:   Compiles with flags useful for debugging.\\nfast:    Compiles with flags for high performance.\\nprofile: Compiles with flags for profiling.\\ngprof:   Displays the profiling results with gprof.\\nclean:   Deletes auxiliary files.\\nhelp:    Displays this help text.\\n\\nTo compile with additional flags, add the argument\\nFLAGS=\\"<flags>\\""''' \
+\t@echo %s''' \
     % (executable_name[:-2],
        datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
        'mpifort' if use_mpi else compiler,
@@ -1000,12 +1007,13 @@ help:
        module_names_string,
        compilation_flags,
        linking_flags,
-       mpi_comp_flags,
-       mpi_link_flags,
        debug_flags,
        fast_flags,
        library_flags,
-       compile_rule_string)
+       compile_rule_string,
+       delete_cmd,
+       delete_trail,
+       help_text)
 
     print 'Done'
 

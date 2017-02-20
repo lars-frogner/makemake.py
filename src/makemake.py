@@ -6,7 +6,7 @@
 #
 # State: Functional
 #
-# Last modified 16.02.2017 by Lars Frogner
+# Last modified 18.02.2017 by Lars Frogner
 #
 import sys, os
 
@@ -17,8 +17,8 @@ makemake.py <flags> <source files>
 
 Separate arguments with spaces. Surround arguments that contain
 spaces with double quotes. Source files lying in another directory 
-can be prepended with their absoulte path (from /) or relative path 
-(from ./).
+can be prepended with their absoulte path (from %s%s) or relative path 
+(from .%s).
 
 Flags:
 -c <compiler name>: Specifies which compiler to use (default is GCC 
@@ -29,7 +29,7 @@ Flags:
 -H <paths>:         Specifies search paths to use for header files.
 -L <paths>:         Specifies search paths to use for library files.
 
-The S, H and L flags can be combined arbitrarily (e.g. -SH or -LSH).'''
+The S, H and L flags can be combined arbitrarily (e.g. -SH or -LSH).''' % ('<drive>:' if sys.platform == 'win32' else '', os.sep, os.sep)
     sys.exit(1)
 
 def abort_language():
@@ -145,15 +145,15 @@ def detect_language(arg_list, valid_fortran_endings, valid_c_endings):
 
     return language
 
-if len(sys.argv) < 2:
-    abort_usage()
-
 def convert_relative_paths(working_dir_path, paths):
 
     for i in xrange(len(paths)):
 
-        if paths[i][:2] == './':
+        if paths[i][:2] == '.' + os.sep:
             paths[i] = os.path.join(working_dir_path, paths[i][2:])
+
+if len(sys.argv) < 2:
+    abort_usage()
 
 combinable_flags = ['S', 'H', 'L']
 incombinable_flags = ['w', 'c']

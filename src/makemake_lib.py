@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 16.02.2017 by Lars Frogner
+# Last modified 18.02.2017 by Lars Frogner
 #
 import sys, os
 import datetime
@@ -41,11 +41,11 @@ def search_for_file(file_string, working_dir_path, search_paths, abort_on_fail=T
     # This function searches for the given file and returns the full 
     # path where the file was found.
 
-    slash_splitted = file_string.split('/')
+    slash_splitted = file_string.split(os.sep)
 
     filename = slash_splitted[-1]
 
-    specified_path = '/'.join(slash_splitted[:-1])
+    specified_path = os.sep.join(slash_splitted[:-1])
     has_specified_path = len(specified_path.strip()) > 0
 
     determined_path = specified_path
@@ -61,7 +61,7 @@ def search_for_file(file_string, working_dir_path, search_paths, abort_on_fail=T
 
         # Search specified path for the file
 
-        if specified_path[:2] == './':
+        if specified_path[:2] == '.' + os.sep:
             specified_path = os.path.join(working_dir_path, specified_path[2:])
 
         sys.stdout.write('Searching in \"%s\"...' % specified_path)
