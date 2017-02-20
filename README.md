@@ -1,14 +1,25 @@
 # makemake.py
-makemake.py is a Python script for generating makefiles that can be used with the GNU Make utility for compiling source code. Currently supported programming languages are C and Fortran.
+makemake.py is a Python script for generating makefiles that can be used with the [GNU Make](https://www.gnu.org/software/make/) utility for compiling source code. Currently supported programming languages are C and Fortran.
 ## How it works
 The script takes a list of source files, and scans their content to determine how the files depend on each other. It then generates a makefile containing compilation and linking rules that take these dependecies into account. An executable can then be produced simply by writing `make`. The makefile contains additional rules for using predefined groups of compiler flags, e. g. using `make debug` will compile with flags useful for debugging.
 
 **Important:** With any automatically generated makefile there is always a chance that some dependencies have been handled incorrectly. This can result in sources not getting recompiled when they should, leading to unexpected behaviour when the program is run. It is therefore important that you always verify the list of dependencies printed by makemake.py when it generates a new makefile.
+
+## Requirements
+To run the script you only need to have Python 2.7 installed. However, to use the makefiles you of course need to have GNU Make as well. On Linux and OS X it should be included by default. On Windows you can get it through [GnuWin32](http://gnuwin32.sourceforge.net/packages/make.htm). It is also included in [MinGW](http://www.mingw.org/) (in that case the program to run is called `mingw32-make` rather than just `make`).
+
 ## Installation
-1. Download the files in the *src* folder to a destination of your choice.
-2. Make sure *makemake.py* is allowed to be executed. To make it executable, use `chmod +x makemake.py`.
-3. Make sure the source folder is included in the PATH environment variable. To include the folder in PATH, you can add the line `export PATH=$PATH:<path to source folder>` to your *.bashrc* file (located in the home directory). 
+#### Linux/OS X
+1. Download the files in the *src* folder to a destination of your choice. If you use Git, you can just clone the repository.
+2. Make sure the source folder is included in the PATH environment variable. To include the folder in PATH, you can add the line `export PATH=$PATH:<path to source folder>` to your *.bashrc* file (if you use Linux) or your *.bash_profile* file (if you use OS X). Either should be located in the home directory.
+3. Make sure *makemake.py* is allowed to be executed. To make it executable, use `chmod +x makemake.py`.
 4. You can now run the script from anywhere by typing `makemake.py <arguments>`.
+#### Windows
+1. Download the files in the *src* folder to a destination of your choice. If you use Git, you can just clone the repository.
+2. Make sure the source folder is included in the PATH environment variable. To include the folder in PATH, go to Control Panel -> System and Security -> System -> Advanced system settings. Click on "Environment Variables...", select "Path" and click "Edit...". Now add the path to the *src* folder.
+3. Make sure *makemake.py* will be executed by Python by default. Right-click on *makemake.py* and select "Properties". Click the "Change..." button and choose the python.exe executable. (Note that this will cause all `.py` files to be executed by Python by default, which can be annoying when you just want to open a file for editing. I haven't found a way around this however.)
+4. In some cases the arguments to *makemake.py* specified on the command line will not automatically be seen by the Python interpreter. To fix this, start *regedit* and find the `HKEY_CLASSES_ROOT\Applications\python.exe\shell\open\command` registry. Double-click on the "(Default)" entry and make sure that the text string has a "%*" at the end. So if the string reads `"C:\Python27\python.exe" "%1"`, change it to `"C:\Python27\python.exe" "%1" %*`.
+5. You can now run the script from anywhere by typing `makemake.py <arguments>`.
 
 ## Usage
 You can run *makemake.py* without any arguments to get usage instructions in a compact format. Here is a more in-depth description.
