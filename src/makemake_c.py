@@ -9,7 +9,7 @@
 import sys
 import os
 import datetime
-import makemake3_lib as makemake_lib
+import makemake_lib
 
 
 class c_source:
