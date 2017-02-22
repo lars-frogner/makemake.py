@@ -348,8 +348,6 @@ class source_container:
         self.source_instances = source_instances
         self.header_instances = header_instances
 
-        self.header_dependencies = self.determine_header_dependencies()
-
     def determine_header_dependencies(self):
 
         # This method creates a dictionary with source_class instances
@@ -426,7 +424,7 @@ class source_container:
 
         print('Done')
 
-        return source_header_dependencies
+        self.header_dependencies = source_header_dependencies
 
     def process_dependencies(self, unprocessed_object_dependencies):
 

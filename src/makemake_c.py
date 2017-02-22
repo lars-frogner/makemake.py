@@ -340,7 +340,7 @@ def generate_makefile(manager, sources):
 
     default_compiler = 'gcc'
     compiler = default_compiler if (manager.compiler is None) else manager.compiler
-    mpi_compiler = 'mpifort' if total_library_usage['mpi'] else compiler
+    mpi_compiler = 'mpicc' if total_library_usage['mpi'] else compiler
 
     debug_flags, fast_flags = makemake_lib.read_flag_groups(compiler)
 
