@@ -6,7 +6,7 @@
 #
 # State: Functional
 #
-# Last modified 21.02.2017 by Lars Frogner
+# Last modified 23.02.2017 by Lars Frogner
 #
 import sys
 import os
@@ -23,13 +23,17 @@ can be prepended with their absoulte path (from {0}{1}) or relative path
 (from .{1}).
 
 Flags:
--c <compiler name>: Specifies which compiler to use (default is GCC
-                    compilers).
--w:                 Generates a wrapper for all .mk files in the
-                    directory.
--S <paths>:         Specifies search paths to use for source files.
--H <paths>:         Specifies search paths to use for header files.
--L <paths>:         Specifies search paths to use for library files.
+-c <compiler name>:   Specifies which compiler to use (default is GCC
+                      compilers).
+-x <executable name>: Specifies the filename to use for the output
+                      executable.
+-l <library name>:    Specifies to produce a library named <library name>
+                      rather than an executable.
+-S <paths>:           Specifies search paths to use for input source files.
+-H <paths>:           Specifies search paths to use for input header files.
+-L <paths>:           Specifies search paths to use for input library files.
+-w:                   Generates a wrapper for all .mk files in the
+                      directory.
 
 The S, H and L flags can be combined arbitrarily (e.g. -SH or -LSH).'''
           .format('<drive>:' if sys.platform == 'win32' else '', os.sep))
@@ -49,7 +53,13 @@ def abort_ending(filename):
     sys.exit(1)
 
 
-def extract_flag_args(arg_list, valid_file_endings):
+def abort_x_and_l():
+
+    print('Error: both -x and -l flags specified')
+    sys.exit(1)
+
+
+def extract_flag_args(arg_list, valid_file_endings, n_flag_args):
 
     # This function finds the arguments following the flags
     # in the argument list, removes them from the argument list
@@ -70,28 +80,41 @@ def extract_flag_args(arg_list, valid_file_endings):
 
             flag_arg_indices.append(i)
 
-            idx = i + 1
+            if flag in n_flag_args:
 
-            # Loop through arguments following the flag
-            while idx < n_args:
+                idx = i + 1
 
-                # Find the file ending of the argument if it has one
-                dot_splitted = arg_list[idx].split('.')
-                ending = None if len(dot_splitted) == 0 else dot_splitted[-1]
-
-                # If the file ending is a valid one, or a new flag has been
-                # reached, the flag argument list has ended, and the parsing
-                # can end.
-                if ending in valid_file_endings or arg_list[idx][0] == '-':
-
-                    break
-
-                # Otherwise, add the argument to a separate list
-                else:
+                # Loop through arguments following the flag
+                while idx < n_args and idx - (i+1) < n_flag_args[flag]:
 
                     flag_args[flag].append(arg_list[idx])
                     flag_arg_indices.append(idx)
                     idx += 1
+
+            else:
+
+                idx = i + 1
+
+                # Loop through arguments following the flag
+                while idx < n_args:
+
+                    # Find the file ending of the argument if it has one
+                    dot_splitted = arg_list[idx].split('.')
+                    ending = None if len(dot_splitted) == 0 else dot_splitted[-1]
+
+                    # If the file ending is a valid one, or a new flag has been
+                    # reached, the flag argument list has ended, and the parsing
+                    # can end.
+                    if ending in valid_file_endings or arg_list[idx][0] == '-':
+
+                        break
+
+                    # Otherwise, add the argument to a separate list
+                    else:
+
+                        flag_args[flag].append(arg_list[idx])
+                        flag_arg_indices.append(idx)
+                        idx += 1
 
     flag_arg_indices.reverse()
 
@@ -169,7 +192,8 @@ languages = ['fortran', 'c']
 
 # Lists of valid flags
 combinable_flags = ['S', 'H', 'L']
-incombinable_flags = ['w', 'c']
+incombinable_flags = ['c', 'x', 'l', 'w']
+n_flag_args = {'c': 1, 'x': 1, 'l': 1, 'w': 0}
 
 # Organize valid file endings
 
@@ -192,17 +216,21 @@ working_dir_path = os.getcwd()
 
 # Extract flag arguments
 
-flag_args_combined = extract_flag_args(arg_list, all_valid_endings)
+flag_args_combined = extract_flag_args(arg_list, all_valid_endings, n_flag_args)
 flag_args = separate_flags(flag_args_combined,
                            combinable_flags,
                            incombinable_flags)
 
-generate_wrapper = 'w' in flag_args
-compiler = None if 'c' not in flag_args else flag_args['c'][0]
+compiler = False if 'c' not in flag_args else flag_args['c'][0]
+executable = False if 'x' not in flag_args else flag_args['x'][0]
+library = False if 'l' not in flag_args else flag_args['l'][0]
 source_paths = [] if 'S' not in flag_args else list(set(flag_args['S']))
 header_paths = [] if 'H' not in flag_args else list(set(flag_args['H']))
 library_paths = [] if 'L' not in flag_args else list(set(flag_args['L']))
+generate_wrapper = 'w' in flag_args
 
+if executable and library:
+    abort_x_and_l()
 # Convert any relative paths to absoult paths
 convert_relative_paths(working_dir_path, source_paths)
 convert_relative_paths(working_dir_path, header_paths)
@@ -213,6 +241,14 @@ language = detect_language(arg_list, source_endings)
 
 if language not in languages and not generate_wrapper:
     abort_language()
+
+if library:
+
+    dot_splitted = library.split('.')
+    ending = '<no ending>' if len(dot_splitted) == 0 else dot_splitted[-1]
+
+    if ending not in library_endings[language]:
+        abort_ending(library)
 
 if language in languages:
 
@@ -254,7 +290,9 @@ if language in languages:
                                             library_files,
                                             makemake_f.fortran_source,
                                             makemake_f.fortran_header,
-                                            compiler)
+                                            compiler,
+                                            executable,
+                                            library)
 
         for sources in manager.source_containers:
             makemake_f.generate_makefile(manager, sources)
@@ -274,7 +312,9 @@ if language in languages:
                                             library_files,
                                             makemake_c.c_source,
                                             makemake_c.c_header,
-                                            compiler)
+                                            compiler,
+                                            executable,
+                                            library)
 
         for sources in manager.source_containers:
             makemake_c.generate_makefile(manager, sources)
