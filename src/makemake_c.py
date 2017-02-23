@@ -4,11 +4,10 @@
 #
 # State: Functional
 #
-# Last modified 21.02.2017 by Lars Frogner
+# Last modified 23.02.2017 by Lars Frogner
 #
 import sys
 import os
-import datetime
 import makemake_lib
 
 
@@ -59,7 +58,7 @@ class c_source:
         no_strings_text = self.clean_file_text()
 
         self.is_main, self.included_headers, \
-            self.library_usage = self.get_included_headers(no_strings_text)
+            self.internal_libraries = self.get_included_headers(no_strings_text)
 
         self.executable_name = self.name + ('.exe' if sys.platform == 'win32' else '.x')
 
@@ -85,13 +84,13 @@ class c_source:
                   '\n'.join(['-{}'.format(function_name)
                              for function_name in self.declared_functions]))
 
-        if self.library_usage['math']:
+        if self.internal_libraries['math']:
             print('Uses math library')
 
-        if self.library_usage['mpi']:
+        if self.internal_libraries['mpi']:
             print('Uses MPI')
 
-        if self.library_usage['openmp']:
+        if self.internal_libraries['openmp']:
             print('Uses OpenMP')
 
         # Compilation rule for the makefile
@@ -100,8 +99,8 @@ class c_source:
                                           self.object_name,
                                           filename_with_path.replace(' ', '\ '))
 
-        self.compile_rule = '\n\t$(COMP) -c $(COMP_FLAGS) $(FLAGS) \"{}\"'\
-                            .format(filename_with_path)
+        self.compile_rule = '\n\t$(COMPILER) -c $(EXTRA_FLAGS) $(COMPILATION_FLAGS) ' + \
+            '$(HEADER_PATH_FLAGS) \"{}\"'.format(filename_with_path)
 
     def clean_file_text(self):
 
@@ -185,7 +184,7 @@ class c_source:
         # to determine its header dependencies.
 
         is_main = False
-        library_usage = {'math': False, 'mpi': False, 'openmp': False}
+        internal_libraries = {'math': False, 'mpi': False, 'openmp': False}
 
         lines = text.split('\n')
 
@@ -214,11 +213,11 @@ class c_source:
                 dep = second_word[1:-1]
 
                 if dep == 'math.h':
-                    library_usage['math'] = True
+                    internal_libraries['math'] = True
                 elif dep == 'mpi.h':
-                    library_usage['mpi'] = True
+                    internal_libraries['mpi'] = True
                 elif dep == 'omp.h':
-                    library_usage['openmp'] = True
+                    internal_libraries['openmp'] = True
                 elif dep not in self.std_headers:
                     included_headers.append(dep)
 
@@ -228,7 +227,7 @@ class c_source:
 
                 is_main = True
 
-        return is_main, included_headers, library_usage
+        return is_main, included_headers, internal_libraries
 
     def remove_preprocessor_directives(self, text):
 
@@ -315,8 +314,15 @@ def generate_makefile(manager, sources):
     # This function generates a makefile for compiling the program
     # given by the supplied c_source objects.
 
-    print('\nGenerating makefile for executable \"{}\"...\n'
-          .format(sources.program_source.executable_name))
+    if manager.executable:
+        print('\nGenerating makefile for executable \"{}\"...\n'
+              .format(manager.executable))
+    elif manager.library:
+        print('\nGenerating makefile for library \"{}\"...\n'
+              .format(manager.library))
+    else:
+        print('\nGenerating makefile for executable \"{}\"...\n'
+              .format(sources.program_source.executable_name))
 
     # Get information from files
 
@@ -327,74 +333,176 @@ def generate_makefile(manager, sources):
 
     dependency_text = sources.process_dependencies(object_dependencies)
 
-    total_library_usage = sources.get_library_usage()
-    compile_rule_string = sources.get_compile_rules()
-
     print('\nGenerating makefile text... ', end='')
 
-    # Collect makefile parameters
+    pure_output_name, current_time, compiler, \
+        output_name, object_files, compilation_flags, \
+        linking_flags, header_path_flags, library_link_flags, \
+        library_path_flags, debug_flags, fast_flags, \
+        compile_rule_string, delete_cmd, delete_trail, \
+        help_text = makemake_lib.get_common_makefile_parameters(manager,
+                                                                sources,
+                                                                'gcc',
+                                                                'mpicc')
 
-    pure_executable_name = sources.program_source.executable_name.split('.')[0]
+    # Create makefile
+    if manager.library and not manager.library_is_shared:
 
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        # Static library
 
-    default_compiler = 'gcc'
-    compiler = default_compiler if (manager.compiler is None) else manager.compiler
-    mpi_compiler = 'mpicc' if total_library_usage['mpi'] else compiler
+        makefile = '''#${}
+# This makefile was generated by makemake.py ({}).
+# GitHub repository: https://github.com/lars-frogner/makemake.py
+#
+# Usage:
+# make <argument 1> <argument 2> ...
+#
+# Arguments:
+# <none>:  Compiles with no compiler flags.
+# debug:   Compiles with flags useful for debugging.
+# fast:    Compiles with flags for high performance.
+# clean:   Deletes auxiliary files.
+# help:    Displays this help text.
+#
+# To compile with additional flags, add the argument
+# EXTRA_FLAGS="<flags>"
 
-    debug_flags, fast_flags = makemake_lib.read_flag_groups(compiler)
+# Define variables
+COMPILER = {}
+LIBRARY = {}
+OBJECT_FILES = {}
+COMPILATION_FLAGS = {}
+DEBUGGING_FLAGS = {}
+PERFORMANCE_FLAGS = {}
+HEADER_PATH_FLAGS = {}
 
-    source_object_names_string = ' '.join([source.object_name
-                                           for source in sources.reduced_source_instances])
+# Make sure certain rules are not activated by the presence of files
+.PHONY: all debug fast profile set_debug_flags set_fast_flags clean help
 
-    math_flag = ' -lm' if total_library_usage['math'] else ''
-    openmp_flag = '-fopenmp' if total_library_usage['openmp'] else ''
+# Define default target group
+all: $(LIBRARY)
 
-    compilation_flags = openmp_flag + ' '.join(['-I\"{}\"'.format(path)
-                                                for path in manager.all_header_paths])
+# Define optional target groups
+debug: set_debug_flags $(LIBRARY)
+fast: set_fast_flags $(LIBRARY)
 
-    linking_flags = openmp_flag
+# Defines appropriate compiler flags for debugging
+set_debug_flags:
+\t$(eval COMPILATION_FLAGS = $(COMPILATION_FLAGS) $(DEBUGGING_FLAGS))
 
-    library_flags = ''.join([' -L\"{}\"'.format(path) for path in manager.all_library_paths]) \
-                    + math_flag \
-                    + ''.join([' -l{}'.format(filename) for filename in manager.library_link_names])
+# Defines appropriate compiler flags for high performance
+set_fast_flags:
+\t$(eval COMPILATION_FLAGS = $(COMPILATION_FLAGS) $(PERFORMANCE_FLAGS))
 
-    delete_cmd = 'del /F' if sys.platform == 'win32' else 'rm -f'
+# Rule for linking object files
+$(LIBRARY): $(OBJECT_FILES)
+\tar rcs $(LIBRARY) $(OBJECT_FILES){}
 
-    if sys.platform == 'win32':
-        help_text = 'Usage:' + \
-                    ' & echo make ^<argument 1^> ^<argument 2^> ...' + \
-                    ' & echo.' + \
-                    ' & echo Arguments: ' + \
-                    ' & echo ^<none^>:  Compiles with no compiler flags.' + \
-                    ' & echo debug:   Compiles with flags useful for debugging.' + \
-                    ' & echo fast:    Compiles with flags for high performance.' + \
-                    ' & echo profile: Compiles with flags for profiling.' + \
-                    ' & echo gprof:   Displays the profiling results with gprof.' + \
-                    ' & echo clean:   Deletes auxiliary files.' + \
-                    ' & echo help:    Displays this help text.' + \
-                    ' & echo.' + \
-                    ' & echo To compile with additional flags, add the argument' + \
-                    ' & echo FLAGS="<flags>"'
+# Action for removing all auxiliary files
+clean:
+\t{} $(OBJECT_FILES) $(MODULE_FILES){}
+
+# Action for printing help text
+help:
+\t@echo {}''' \
+    .format(pure_output_name,
+            current_time,
+            compiler,
+            output_name,
+            object_files,
+            compilation_flags,
+            debug_flags,
+            fast_flags,
+            header_path_flags,
+            compile_rule_string,
+            delete_cmd,
+            delete_trail,
+            help_text)
+
+    elif manager.library:
+
+        # Shared library
+
+        makefile = '''#${}
+# This makefile was generated by makemake.py ({}).
+# GitHub repository: https://github.com/lars-frogner/makemake.py
+#
+# Usage:
+# make <argument 1> <argument 2> ...
+#
+# Arguments:
+# <none>:  Compiles with no compiler flags.
+# debug:   Compiles with flags useful for debugging.
+# fast:    Compiles with flags for high performance.
+# clean:   Deletes auxiliary files.
+# help:    Displays this help text.
+#
+# To compile with additional flags, add the argument
+# EXTRA_FLAGS="<flags>"
+
+# Define variables
+COMPILER = {}
+LIBRARY = {}
+OBJECT_FILES = {}
+COMPILATION_FLAGS = {}
+LINKING_FLAGS = {}
+DEBUGGING_FLAGS = {}
+PERFORMANCE_FLAGS = {}
+HEADER_PATH_FLAGS = {}
+LIBRARY_LINKING_FLAGS = {}
+LIBRARY_PATH_FLAGS = {}
+
+# Make sure certain rules are not activated by the presence of files
+.PHONY: all debug fast profile set_debug_flags set_fast_flags clean help
+
+# Define default target group
+all: $(LIBRARY)
+
+# Define optional target groups
+debug: set_debug_flags $(LIBRARY)
+fast: set_fast_flags $(LIBRARY)
+
+# Defines appropriate compiler flags for debugging
+set_debug_flags:
+\t$(eval COMPILATION_FLAGS = $(COMPILATION_FLAGS) $(DEBUGGING_FLAGS))
+
+# Defines appropriate compiler flags for high performance
+set_fast_flags:
+\t$(eval COMPILATION_FLAGS = $(COMPILATION_FLAGS) $(PERFORMANCE_FLAGS))
+
+# Rule for linking object files
+$(LIBRARY): $(OBJECT_FILES)
+\t$(COMPILER) $(EXTRA_FLAGS) $(LINKING_FLAGS) $(OBJECT_FILES) $(LIBRARY_PATH_FLAGS) $(LIBRARY_LINKING_FLAGS) -o $(LIBRARY){}
+
+# Action for removing all auxiliary files
+clean:
+\t{} $(OBJECT_FILES) $(MODULE_FILES){}
+
+# Action for printing help text
+help:
+\t@echo {}''' \
+    .format(pure_output_name,
+            current_time,
+            compiler,
+            output_name,
+            object_files,
+            compilation_flags,
+            linking_flags,
+            debug_flags,
+            fast_flags,
+            header_path_flags,
+            library_link_flags,
+            library_path_flags,
+            compile_rule_string,
+            delete_cmd,
+            delete_trail,
+            help_text)
+
     else:
-        help_text = '"Usage:' + \
-                    '\\nmake <argument 1> <argument 2> ...' + \
-                    '\\n' + \
-                    '\\nArguments:' + \
-                    '\\n<none>:  Compiles with no compiler flags.' + \
-                    '\\ndebug:   Compiles with flags useful for debugging.' + \
-                    '\\nfast:    Compiles with flags for high performance.' + \
-                    '\\nprofile: Compiles with flags for profiling.' + \
-                    '\\ngprof:   Displays the profiling results with gprof.' + \
-                    '\\nclean:   Deletes auxiliary files.' + \
-                    '\\nhelp:    Displays this help text.' + \
-                    '\\n' + \
-                    '\\nTo compile with additional flags, add the argument' + \
-                    '\\nFLAGS=\\"<flags>\\""'
 
-    # Create makefile text
+        # Executable
 
-    makefile = '''#@{}
+        makefile = '''#${}
 # This makefile was generated by makemake.py ({}).
 # GitHub repository: https://github.com/lars-frogner/makemake.py
 #
@@ -411,66 +519,75 @@ def generate_makefile(manager, sources):
 # help:    Displays this help text.
 #
 # To compile with additional flags, add the argument
-# FLAGS="<flags>"
+# EXTRA_FLAGS="<flags>"
 
 # Define variables
-COMP = {}
-EXECNAME = {}
-OBJECTS = {}
-COMP_FLAGS = {}
-LINK_FLAGS = {}
+COMPILER = {}
+EXECUTABLE = {}
+OBJECT_FILES = {}
+COMPILATION_FLAGS = {}
+LINKING_FLAGS = {}
+DEBUGGING_FLAGS = {}
+PERFORMANCE_FLAGS = {}
+PROFILING_FLAGS = -pg
+HEADER_PATH_FLAGS = {}
+LIBRARY_LINKING_FLAGS = {}
+LIBRARY_PATH_FLAGS = {}
 
 # Make sure certain rules are not activated by the presence of files
 .PHONY: all debug fast profile set_debug_flags set_fast_flags set_profile_flags clean gprof help
 
 # Define default target group
-all: $(EXECNAME)
+all: $(EXECUTABLE)
 
 # Define optional target groups
-debug: set_debug_flags $(EXECNAME)
-fast: set_fast_flags $(EXECNAME)
-profile: set_profile_flags $(EXECNAME)
+debug: set_debug_flags $(EXECUTABLE)
+fast: set_fast_flags $(EXECUTABLE)
+profile: set_profile_flags $(EXECUTABLE)
 
 # Defines appropriate compiler flags for debugging
 set_debug_flags:
-\t$(eval COMP_FLAGS = $(COMP_FLAGS) {})
+\t$(eval COMPILATION_FLAGS = $(COMPILATION_FLAGS) $(DEBUGGING_FLAGS))
 
 # Defines appropriate compiler flags for high performance
 set_fast_flags:
-\t$(eval COMP_FLAGS = $(COMP_FLAGS) {})
+\t$(eval COMPILATION_FLAGS = $(COMPILATION_FLAGS) $(PERFORMANCE_FLAGS))
 
 # Defines appropriate compiler flags for profiling
 set_profile_flags:
-\t$(eval COMP_FLAGS = $(COMP_FLAGS) -pg)
-\t$(eval LINK_FLAGS = $(LINK_FLAGS) -pg)
+\t$(eval COMPILATION_FLAGS = $(COMPILATION_FLAGS) $(PROFILING_FLAGS))
+\t$(eval LINKING_FLAGS = $(LINKING_FLAGS) $(PROFILING_FLAGS))
 
 # Rule for linking object files
-$(EXECNAME): $(OBJECTS)
-\t$(COMP) $(LINK_FLAGS) $(FLAGS) -o $(EXECNAME) $(OBJECTS){}{}
+$(EXECUTABLE): $(OBJECT_FILES)
+\t$(COMPILER) $(EXTRA_FLAGS) $(LINKING_FLAGS) $(OBJECT_FILES) $(LIBRARY_PATH_FLAGS) $(LIBRARY_LINKING_FLAGS) -o $(EXECUTABLE){}
 
 # Action for removing all auxiliary files
 clean:
-\t{} $(OBJECTS)
+\t{} $(OBJECT_FILES) $(MODULE_FILES){}
 
 # Action for reading profiling results
 gprof:
-\tgprof $(EXECNAME)
+\tgprof $(EXECUTABLE)
 
 # Action for printing help text
 help:
 \t@echo {}''' \
-    .format(pure_executable_name,
+    .format(pure_output_name,
             current_time,
-            mpi_compiler,
-            sources.program_source.executable_name,
-            source_object_names_string,
+            compiler,
+            output_name,
+            object_files,
             compilation_flags,
             linking_flags,
             debug_flags,
             fast_flags,
-            library_flags,
+            header_path_flags,
+            library_link_flags,
+            library_path_flags,
             compile_rule_string,
             delete_cmd,
+            delete_trail,
             help_text)
 
     print('Done')
@@ -478,7 +595,7 @@ help:
     print(dependency_text)
 
     writer = makemake_lib.file_writer(manager.working_dir_path)
-    writer.save_makefile(makefile, pure_executable_name)
+    writer.save_makefile(makefile, pure_output_name)
 
 
 def abort_multiple_producers(function):

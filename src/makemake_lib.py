@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 21.02.2017 by Lars Frogner
+# Last modified 23.02.2017 by Lars Frogner
 #
 import sys
 import os
@@ -26,7 +26,9 @@ class file_manager:
                  library_files,
                  source_class,
                  header_class,
-                 compiler):
+                 compiler,
+                 executable,
+                 library):
 
         self.working_dir_path = working_dir_path
         self.source_paths = source_paths
@@ -38,9 +40,13 @@ class file_manager:
         self.source_class = source_class
         self.header_class = header_class
         self.compiler = compiler
+        self.executable = executable
+        self.library = library
+        self.library_is_shared = library and library.split('.')[-1] == 'so'
 
         self.source_instances, self.header_instances, self.library_link_names, \
-            self.all_header_paths, self.all_library_paths = self.process_files()
+            self.all_header_paths, self.all_library_paths, \
+            self.shared_library_paths = self.process_files()
 
         self.source_containers = self.collect_programs()
 
@@ -79,11 +85,12 @@ class file_manager:
         # Process library files
 
         extra_library_paths = []
+        shared_library_paths = []
         library_link_names = []
 
         for file_string in self.library_files:
 
-            has_determined_path, determined_path, \
+            has_unlisted_path, path, \
                 filename = self.search_for_file(file_string,
                                                 self.library_paths
                                                 )[2:]
@@ -91,19 +98,24 @@ class file_manager:
             if len(filename) < 3 or filename[:3] != 'lib':
                 self.abort_invalid_lib(filename)
 
+            if filename.split('.')[-1] == 'so' \
+               and path not in shared_library_paths:
+
+                shared_library_paths.append(path)
+
             filename = '.'.join(filename.split('.')[:-1])
 
             library_link_names.append(filename[3:])
 
-            if has_determined_path and \
-               determined_path not in self.library_paths + extra_library_paths:
+            if has_unlisted_path and \
+               path not in self.library_paths + extra_library_paths:
 
-                extra_library_paths.append(determined_path)
+                extra_library_paths.append(path)
 
         all_library_paths = self.library_paths + extra_library_paths
 
         return source_instances, header_instances, library_link_names, \
-            all_header_paths, all_library_paths
+            all_header_paths, all_library_paths, shared_library_paths
 
     def search_for_file(self, file_string, search_paths, abort_on_fail=True):
 
@@ -117,8 +129,8 @@ class file_manager:
         specified_path = os.sep.join(slash_splitted[:-1])
         has_specified_path = len(specified_path.strip()) > 0
 
-        determined_path = specified_path
-        has_determined_path = has_specified_path
+        path = specified_path
+        has_unlisted_path = has_specified_path
 
         filename_with_path = None
 
@@ -154,7 +166,7 @@ class file_manager:
 
             # Search the working directory for the file
 
-            path = self.working_dir_path
+            possible_path = self.working_dir_path
 
             print('Searching in working directory... ', end='')
 
@@ -167,17 +179,18 @@ class file_manager:
                 print('Not found')
                 found = False
 
-                for path in search_paths:
+                for possible_path in search_paths:
 
-                    print('Searching in \"{}\"... '.format(path), end='')
+                    print('Searching in \"{}\"... '.format(possible_path), end='')
 
-                    filename_with_path = os.path.join(path, filename)
+                    filename_with_path = os.path.join(possible_path, filename)
 
                     if os.path.isfile(filename_with_path):
 
                         print('Found')
 
                         found = True
+                        path = possible_path
                         break
 
                     else:
@@ -191,8 +204,8 @@ class file_manager:
 
                 print('Found')
 
-                determined_path = path
-                has_determined_path = True
+                path = possible_path
+                has_unlisted_path = True
 
         if not found and not abort_on_fail:
 
@@ -204,8 +217,8 @@ class file_manager:
             if ans == 'n':
                 abort()
 
-        return found, filename_with_path, has_determined_path, \
-            determined_path, filename
+        return found, filename_with_path, has_unlisted_path, \
+            path, filename
 
     def process_headers(self, header_files, abort_on_fail=True):
 
@@ -217,19 +230,17 @@ class file_manager:
 
         for file_string in header_files:
 
-            found, filename_with_path, has_determined_path, \
-                determined_path = self.search_for_file(file_string,
-                                                       self.header_paths,
-                                                       abort_on_fail=abort_on_fail
-                                                       )[:4]
+            found, filename_with_path, has_unlisted_path, \
+                path = self.search_for_file(file_string,
+                                            self.header_paths,
+                                            abort_on_fail=abort_on_fail
+                                            )[:4]
             if found:
 
                 header_instances.append(self.header_class(filename_with_path))
 
-                if has_determined_path:
-                    extra_header_paths.append(determined_path)
-
-        extra_header_paths = list(set(extra_header_paths))
+                if has_unlisted_path and path not in extra_header_paths:
+                    extra_header_paths.append(path)
 
         return header_instances, extra_header_paths
 
@@ -298,24 +309,48 @@ class file_manager:
                 program_sources.append(source)
                 filtered_source_instances.remove(source)
 
-        if len(program_sources) == 0:
+        if len(program_sources) == 0 and not self.library:
             print()
             self.abort_no_program_file()
 
-        print('\nPrograms to generate makefiles for:\n{}'
-              .format('\n'.join(['-{} ({})'
-                                 .format(src.executable_name,
-                                         src.filename)
-                                 for src in program_sources])))
-
         source_containers = []
 
-        for program_source in program_sources:
+        if self.executable:
 
-            new_source_instances = [program_source] + filtered_source_instances
-            source_containers.append(source_container(program_source,
-                                                      new_source_instances,
+            if len(program_sources) > 1:
+                print()
+                self.abort_multiple_program_files([src.filename
+                                                   for src in program_sources])
+
+            source_containers.append(source_container(program_sources[0],
+                                                      self.source_instances,
                                                       self.header_instances))
+
+        elif self.library:
+
+            if len(program_sources) > 0:
+                print()
+                self.abort_program_files([src.filename
+                                          for src in program_sources])
+
+            source_containers.append(source_container(None,
+                                                      self.source_instances,
+                                                      self.header_instances))
+
+        else:
+
+            print('\nPrograms to generate makefiles for:\n{}'
+                  .format('\n'.join(['-{} ({})'
+                                     .format(src.executable_name,
+                                             src.filename)
+                                     for src in program_sources])))
+
+            for program_source in program_sources:
+
+                new_source_instances = [program_source] + filtered_source_instances
+                source_containers.append(source_container(program_source,
+                                                          new_source_instances,
+                                                          self.header_instances))
 
         return source_containers
 
@@ -333,6 +368,18 @@ class file_manager:
     def abort_no_program_file(self):
 
         print('Error: found no program file')
+        sys.exit(1)
+
+    def abort_multiple_program_files(self, program_files):
+
+        print('Error: cannot have multiple program files ({}) when -x flag is specified'
+              .format(', '.join(program_files)))
+        sys.exit(1)
+
+    def abort_program_files(self, program_files):
+
+        print('Error: cannot have program files ({}) when -l flag is specified'
+              .format(', '.join(program_files)))
         sys.exit(1)
 
 
@@ -368,7 +415,7 @@ class source_container:
 
                 for other_header in self.header_instances:
 
-                    if not (header is other_header) and \
+                    if header is not other_header and \
                        header_name == other_header.filename:
 
                         header_header_dependencies[header].append(other_header)
@@ -437,34 +484,36 @@ class source_container:
 
         # Remove unnecessary sources
 
-        print('Removing independent sources... ', end='')
+        if self.program_source is not None:
 
-        not_needed = []
+            print('Removing independent sources... ', end='')
 
-        for source in source_instances:
+            not_needed = []
 
-            if not source.is_main:
+            for source in source_instances:
 
-                is_needed = False
+                if not source.is_main:
 
-                for other_source in source_instances:
+                    is_needed = False
 
-                    if not (other_source is source):
+                    for other_source in source_instances:
 
-                        for source_dependency in object_dependencies[other_source]:
+                        if other_source is not source:
 
-                            if source_dependency is source:
-                                is_needed = True
+                            for source_dependency in object_dependencies[other_source]:
 
-                if not is_needed:
-                    not_needed.append(source)
+                                if source_dependency is source:
+                                    is_needed = True
 
-        for remove_src in not_needed:
+                    if not is_needed:
+                        not_needed.append(source)
 
-            source_instances.remove(remove_src)
-            object_dependencies.pop(remove_src)
+            for remove_src in not_needed:
 
-        print('Done')
+                source_instances.remove(remove_src)
+                object_dependencies.pop(remove_src)
+
+            print('Done')
 
         # Fix circular dependencies
 
@@ -517,25 +566,25 @@ class source_container:
 
         return dependency_text
 
-    def get_library_usage(self):
+    def get_internal_libraries(self):
 
         # This method determines which libraries must be used based
         # on which libraries the individual sources use.
 
-        total_library_usage = {lib: False
-                               for lib in self.reduced_source_instances[0].library_usage}
+        internal_libraries = {lib: False
+                              for lib in self.reduced_source_instances[0].internal_libraries}
 
         # Go through all source and header objects and gather information
         # about which libraries to use and which source has the main function
 
         for instance in self.reduced_source_instances + self.header_instances:
 
-            for lib in total_library_usage:
+            for lib in internal_libraries:
 
-                total_library_usage[lib] = total_library_usage[lib] or \
-                                           instance.library_usage[lib]
+                internal_libraries[lib] = internal_libraries[lib] or \
+                                           instance.internal_libraries[lib]
 
-        return total_library_usage
+        return internal_libraries
 
     def get_compile_rules(self):
 
@@ -695,7 +744,7 @@ class file_writer:
 
         self.working_dir_path = working_dir_path
 
-    def save_makefile(self, makefile, executable_name):
+    def save_makefile(self, makefile, output_name):
 
         # This method saves the generated makefile text to a file, while
         # managing any existing makefiles to avoid conflicts.
@@ -710,7 +759,7 @@ class file_writer:
             f.close()
 
             is_wrapper = False
-            other_executable_name = None
+            other_output_name = None
 
             for line in lines:
 
@@ -723,7 +772,7 @@ class file_writer:
 
                 elif len(stripped) > 2 and stripped[:2] == '#@':
 
-                    other_executable_name = stripped[2:]
+                    other_output_name = stripped[2:]
                     break
 
             if is_wrapper:
@@ -752,7 +801,7 @@ class file_writer:
 
                 elif ans == 'w':
 
-                    makefile_name = '{}.mk'.format(executable_name)
+                    makefile_name = '{}.mk'.format(output_name)
 
                     self.write_new_file(makefile, makefile_name)
 
@@ -762,11 +811,11 @@ class file_writer:
 
                     abort()
 
-            elif not (other_executable_name is None) and \
-                 executable_name != other_executable_name:
+            elif other_output_name is not None and \
+                 output_name != other_output_name:
 
                 print('\nThere already exists a default ' +
-                      'generated makefile for another executable')
+                      'generated makefile for another output file')
 
                 ans = ''
                 while ans not in ['o', 'n', 'w', 'a']:
@@ -790,8 +839,8 @@ class file_writer:
 
                 elif ans == 'w':
 
-                    makefile_name = '{}.mk'.format(executable_name)
-                    other_makefile_name = '{}.mk'.format(other_executable_name)
+                    makefile_name = '{}.mk'.format(output_name)
+                    other_makefile_name = '{}.mk'.format(other_output_name)
 
                     print('Renaming old makefile to \"{}\"... '
                           .format(other_makefile_name), end='')
@@ -811,9 +860,9 @@ class file_writer:
 
             else:
 
-                if executable_name == other_executable_name:
+                if output_name == other_output_name:
                     print('\nThere already exists a default ' +
-                          'generated makefile for this executable')
+                          'generated makefile for this output file')
                 else:
                     print('\nThere already exists a default ' +
                           'non-generated makefile in this directory')
@@ -1025,3 +1074,111 @@ def read_flag_groups(compiler):
         fast_flags = ''
 
     return debug_flags, fast_flags
+
+
+def get_common_makefile_parameters(manager, sources, default_compiler, mpi_compiler):
+
+    # Collect makefile parameters
+
+    internal_libraries = sources.get_internal_libraries()
+    compile_rule_string = sources.get_compile_rules()
+
+    if manager.executable:
+        output_name = manager.executable
+    elif manager.library:
+        output_name = manager.library
+    else:
+        output_name = sources.program_source.executable_name
+
+    pure_output_name = output_name.split('.')[0]
+
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    if internal_libraries.pop('mpi'):
+        compiler = mpi_compiler
+    elif manager.compiler:
+        compiler = manager.compiler
+    else:
+        compiler = default_compiler
+
+    debug_flags, fast_flags = read_flag_groups(compiler)
+
+    object_files = ' '.join([source.object_name
+                             for source in sources.reduced_source_instances])
+
+    if internal_libraries.pop('openmp'):
+        compilation_flags = '-fopenmp '
+        linking_flags = '-fopenmp '
+    else:
+        compilation_flags = ''
+        linking_flags = ''
+
+    if manager.library_is_shared:
+        compilation_flags += '-fpic'
+        linking_flags += '-shared'
+
+    header_path_flags = ' '.join(['-I\"{}\"'.format(path)
+                                  for path in manager.all_header_paths])
+
+    library_path_flags = ' '.join(['-L\"{}\"'.format(path)
+                                   for path in manager.all_library_paths])
+
+    if len(manager.shared_library_paths) > 0:
+        library_path_flags += ' -Wl,' +\
+            ','.join(['-rpath,\"{}\"'.format(path)
+                      for path in manager.shared_library_paths])
+
+    used_internal_libraries = []
+    for lib in internal_libraries:
+        if internal_libraries[lib]:
+            used_internal_libraries.append(lib)
+
+    library_link_flags = ' '.join(['-l{}'.format(filename)
+                                   for filename in manager.library_link_names +
+                                                   used_internal_libraries])
+
+    if sys.platform == 'win32':
+
+        delete_cmd = 'del /F'
+        delete_trail = ' 2>nul'
+
+        help_text = 'Usage:' + \
+                    ' & echo make ^<argument 1^> ^<argument 2^> ...' + \
+                    ' & echo.' + \
+                    ' & echo Arguments: ' + \
+                    ' & echo ^<none^>:  Compiles with no compiler flags.' + \
+                    ' & echo debug:   Compiles with flags useful for debugging.' + \
+                    ' & echo fast:    Compiles with flags for high performance.' + \
+                    ' & echo profile: Compiles with flags for profiling.' if not manager.library else '' + \
+                    ' & echo gprof:   Displays the profiling results with gprof.' if not manager.library else '' + \
+                    ' & echo clean:   Deletes auxiliary files.' + \
+                    ' & echo help:    Displays this help text.' + \
+                    ' & echo.' + \
+                    ' & echo To compile with additional flags, add the argument' + \
+                    ' & echo EXTRA_FLAGS="<flags>"'
+    else:
+
+        delete_cmd = 'rm -f'
+        delete_trail = ''
+
+        help_text = '"Usage:' + \
+                    '\\nmake <argument 1> <argument 2> ...' + \
+                    '\\n' + \
+                    '\\nArguments:' + \
+                    '\\n<none>:  Compiles with no compiler flags.' + \
+                    '\\ndebug:   Compiles with flags useful for debugging.' + \
+                    '\\nfast:    Compiles with flags for high performance.' + \
+                    '\\nprofile: Compiles with flags for profiling.' if not manager.library else '' + \
+                    '\\ngprof:   Displays the profiling results with gprof.' if not manager.library else '' + \
+                    '\\nclean:   Deletes auxiliary files.' + \
+                    '\\nhelp:    Displays this help text.' + \
+                    '\\n' + \
+                    '\\nTo compile with additional flags, add the argument' + \
+                    '\\nEXTRA_FLAGS=\\"<flags>\\""'
+
+    return pure_output_name, current_time, compiler, \
+        output_name, object_files, compilation_flags, \
+        linking_flags, header_path_flags, library_link_flags, \
+        library_path_flags, debug_flags, fast_flags, \
+        compile_rule_string, delete_cmd, delete_trail, \
+        help_text
