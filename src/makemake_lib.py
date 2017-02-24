@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 23.02.2017 by Lars Frogner
+# Last modified 24.02.2017 by Lars Frogner
 #
 import sys
 import os
@@ -46,7 +46,7 @@ class file_manager:
 
         self.source_instances, self.header_instances, self.library_link_names, \
             self.all_header_paths, self.all_library_paths, \
-            self.shared_library_paths = self.process_files()
+            self.shared_library_paths, self.library_dependencies = self.process_files()
 
         self.source_containers = self.collect_programs()
 
@@ -87,13 +87,14 @@ class file_manager:
         extra_library_paths = []
         shared_library_paths = []
         library_link_names = []
+        library_dependencies = []
 
         for file_string in self.library_files:
 
-            has_unlisted_path, path, \
+            filename_with_path, has_unlisted_path, path, \
                 filename = self.search_for_file(file_string,
                                                 self.library_paths
-                                                )[2:]
+                                                )[1:]
 
             if len(filename) < 3 or filename[:3] != 'lib':
                 self.abort_invalid_lib(filename)
@@ -105,6 +106,7 @@ class file_manager:
 
             filename = '.'.join(filename.split('.')[:-1])
 
+            library_dependencies.append(filename_with_path)
             library_link_names.append(filename[3:])
 
             if has_unlisted_path and \
@@ -115,7 +117,8 @@ class file_manager:
         all_library_paths = self.library_paths + extra_library_paths
 
         return source_instances, header_instances, library_link_names, \
-            all_header_paths, all_library_paths, shared_library_paths
+            all_header_paths, all_library_paths, shared_library_paths, \
+            library_dependencies
 
     def search_for_file(self, file_string, search_paths, abort_on_fail=True):
 
@@ -324,7 +327,8 @@ class file_manager:
 
             source_containers.append(source_container(program_sources[0],
                                                       self.source_instances,
-                                                      self.header_instances))
+                                                      self.header_instances,
+                                                      self.library_dependencies))
 
         elif self.library:
 
@@ -335,22 +339,26 @@ class file_manager:
 
             source_containers.append(source_container(None,
                                                       self.source_instances,
-                                                      self.header_instances))
+                                                      self.header_instances,
+                                                      self.library_dependencies))
 
         else:
 
-            print('\nPrograms to generate makefiles for:\n{}'
-                  .format('\n'.join(['-{} ({})'
-                                     .format(src.executable_name,
-                                             src.filename)
-                                     for src in program_sources])))
+            if len(program_sources) > 1:
+
+                print('\nPrograms to generate makefiles for:\n{}'
+                      .format('\n'.join(['-{} ({})'
+                                         .format(src.executable_name,
+                                                 src.filename)
+                                         for src in program_sources])))
 
             for program_source in program_sources:
 
                 new_source_instances = [program_source] + filtered_source_instances
                 source_containers.append(source_container(program_source,
                                                           new_source_instances,
-                                                          self.header_instances))
+                                                          self.header_instances,
+                                                          self.library_dependencies))
 
         return source_containers
 
@@ -389,11 +397,12 @@ class source_container:
     # methods for processing dependencies and extracting relevant
     # information.
 
-    def __init__(self, program_source, source_instances, header_instances):
+    def __init__(self, program_source, source_instances, header_instances, library_dependencies):
 
         self.program_source = program_source
         self.source_instances = source_instances
         self.header_instances = header_instances
+        self.library_dependencies = library_dependencies
 
     def determine_header_dependencies(self):
 
@@ -599,7 +608,9 @@ class source_container:
 
             dependencies = [header_path.replace(' ', '\ ')
                             for header_path in self.header_dependencies[source]] \
-                           + self.object_dependencies[source]
+                + [library_path.replace(' ', '\ ')
+                   for library_path in self.library_dependencies] \
+                + self.object_dependencies[source]
 
             # Update prerequisites section of the main compile rule and add to the list
             compile_rules.append(source.compile_rule_declr +
