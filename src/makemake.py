@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 #
-# This program takes a list of Fortran or C source files from the
+# This program takes a list of Fortran, C or C++ source files from the
 # command line, and generates a makefile for building the corresponding
 # executable.
 #
 # State: Functional
 #
-# Last modified 23.02.2017 by Lars Frogner
+# Last modified 25.02.2017 by Lars Frogner
 #
 import sys
 import os
@@ -188,7 +188,7 @@ if len(sys.argv) < 2:
 arg_list = sys.argv[1:]
 
 # List of supported languages
-languages = ['fortran', 'c']
+languages = ['fortran', 'c', 'c++']
 
 # Lists of valid flags
 combinable_flags = ['S', 'H', 'L']
@@ -198,11 +198,14 @@ n_flag_args = {'c': 1, 'x': 1, 'l': 1, 'w': 0}
 # Organize valid file endings
 
 source_endings = {'fortran': ['f90', 'f95', 'f03', 'f', 'for', 'F', 'F90'],
-                  'c': ['c']}
+                  'c': ['c'],
+                  'c++': ['C', 'cc', 'cpp', 'CPP', 'c++', 'cp', 'cxx']}
 header_endings = {'fortran': ['h'],
-                  'c': ['h']}
+                  'c': ['h'],
+                  'c++': ['h', 'H', 'hh', 'hpp', 'tcc']}
 library_endings = {'fortran': ['a', 'so'],
-                   'c': ['a', 'so']}
+                   'c': ['a', 'so'],
+                   'c++': ['a', 'so']}
 
 valid_endings = {language: source_endings[language] +
                            header_endings[language] +
@@ -231,6 +234,7 @@ generate_wrapper = 'w' in flag_args
 
 if executable and library:
     abort_x_and_l()
+
 # Convert any relative paths to absoult paths
 convert_relative_paths(working_dir_path, source_paths)
 convert_relative_paths(working_dir_path, header_paths)
@@ -318,6 +322,30 @@ if language in languages:
 
         for sources in manager.source_containers:
             makemake_c.generate_makefile(manager, sources)
+
+    elif language == 'c++':
+
+        raise NotImplementedError
+
+        import makemake_cpp
+
+        print('\nCollecting files...')
+
+        manager = makemake_lib.file_manager(working_dir_path,
+                                            source_paths,
+                                            header_paths,
+                                            library_paths,
+                                            source_files,
+                                            header_files,
+                                            library_files,
+                                            makemake_cpp.cpp_source,
+                                            makemake_cpp.cpp_header,
+                                            compiler,
+                                            executable,
+                                            library)
+
+        for sources in manager.source_containers:
+            makemake_cpp.generate_makefile(manager, sources)
 
 if generate_wrapper:
 
