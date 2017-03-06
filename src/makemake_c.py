@@ -84,7 +84,7 @@ class c_source:
                   '\n'.join(['-{}'.format(function_name)
                              for function_name in self.declared_functions]))
 
-        if self.internal_libraries['math']:
+        if self.internal_libraries['m']:
             print('Uses math library')
 
         if self.internal_libraries['mpi']:
@@ -184,7 +184,7 @@ class c_source:
         # to determine its header dependencies.
 
         is_main = False
-        internal_libraries = {'math': False, 'mpi': False, 'openmp': False}
+        internal_libraries = {'m': False, 'mpi': False, 'openmp': False}
 
         lines = text.split('\n')
 
@@ -213,7 +213,7 @@ class c_source:
                 dep = second_word[1:-1]
 
                 if dep == 'math.h':
-                    internal_libraries['math'] = True
+                    internal_libraries['m'] = True
                 elif dep == 'mpi.h':
                     internal_libraries['mpi'] = True
                 elif dep == 'omp.h':
