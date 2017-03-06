@@ -1105,14 +1105,15 @@ def get_common_makefile_parameters(manager, sources, default_compiler, mpi_compi
 
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    if internal_libraries.pop('mpi'):
-        compiler = mpi_compiler
-    elif manager.compiler:
+    if manager.compiler:
         compiler = manager.compiler
     else:
         compiler = default_compiler
 
     debug_flags, fast_flags = read_flag_groups(compiler)
+    
+    if internal_libraries.pop('mpi'):
+        compiler = mpi_compiler
 
     object_files = ' '.join([source.object_name
                              for source in sources.reduced_source_instances])
