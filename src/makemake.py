@@ -6,10 +6,11 @@
 #
 # State: Functional
 #
-# Last modified 25.02.2017 by Lars Frogner
+# Last modified 13.06.2017 by Lars Frogner
 #
 import sys
 import os
+import makemake_lib
 
 
 def abort_usage():
@@ -17,10 +18,9 @@ def abort_usage():
     print('''Usage:
 makemake.py <flags> <source files>
 
-Separate arguments with spaces. Surround arguments that contain
-spaces with double quotes. Source files lying in another directory
-can be prepended with their absoulte path (from {0}{1}) or relative path
-(from .{1}).
+Separate arguments with spaces. Surround arguments that contain spaces with
+double quotes. Source files lying in another directory can be prepended
+with their absoulte path (from {0}{1}) or relative path (from .{1}).
 
 Flags:
 -c <compiler name>:   Specifies which compiler to use (default is GCC
@@ -227,9 +227,11 @@ flag_args = separate_flags(flag_args_combined,
 compiler = False if 'c' not in flag_args else flag_args['c'][0]
 executable = False if 'x' not in flag_args else flag_args['x'][0]
 library = False if 'l' not in flag_args else flag_args['l'][0]
-source_paths = [] if 'S' not in flag_args else list(set(flag_args['S']))
-header_paths = [] if 'H' not in flag_args else list(set(flag_args['H']))
-library_paths = [] if 'L' not in flag_args else list(set(flag_args['L']))
+source_paths = [] if 'S' not in flag_args else \
+               makemake_lib.remove_duplicates(flag_args['S'])
+header_paths = [] if 'H' not in flag_args else \
+               makemake_lib.remove_duplicates(flag_args['H'])
+library_paths = [] if 'L' not in flag_args else flag_args['L']
 generate_wrapper = 'w' in flag_args
 
 if executable and library:
@@ -255,8 +257,6 @@ if library:
         abort_ending(library)
 
 if language in languages:
-
-    import makemake_lib
 
     # Extract file arguments
 

@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 24.02.2017 by Lars Frogner
+# Last modified 13.06.2017 by Lars Frogner
 #
 import sys
 import os
@@ -282,9 +282,9 @@ class fortran_source:
             if dep in external_functions + external_subroutines:
                 procedure_dependencies.remove(dep)
 
-        module_dependencies = list(set(module_dependencies))
-        procedure_dependencies = list(set(procedure_dependencies))
-        included_headers = list(set(included_headers))
+        module_dependencies = makemake_lib.remove_duplicates(module_dependencies)
+        procedure_dependencies = makemake_lib.remove_duplicates(procedure_dependencies)
+        included_headers = makemake_lib.remove_duplicates(included_headers)
 
         return programs, modules, external_functions, external_subroutines, \
             module_dependencies, included_headers, procedure_dependencies, library_usage
@@ -1002,7 +1002,7 @@ def determine_object_dependencies(source_instances):
                                 = 'through {}()'.format(procedure)
 
         # Get rid of duplicate instances
-        object_dependencies[source] = list(set(object_dependencies[source]))
+        object_dependencies[source] = makemake_lib.remove_duplicates(object_dependencies[source])
 
     print('Done')
 

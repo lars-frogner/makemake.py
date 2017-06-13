@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 24.02.2017 by Lars Frogner
+# Last modified 13.06.2017 by Lars Frogner
 #
 import sys
 import os
@@ -746,7 +746,7 @@ def determine_object_dependencies(source_instances, header_instances):
 
                         break
 
-        object_dependencies[source] = list(set(object_dependencies[source]))
+        object_dependencies[source] = makemake_lib.remove_duplicates(object_dependencies[source])
 
     print('Done')
 

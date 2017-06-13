@@ -4,7 +4,7 @@
 #
 # State: Functional
 #
-# Last modified 24.02.2017 by Lars Frogner
+# Last modified 13.06.2017 by Lars Frogner
 #
 import sys
 import os
@@ -77,10 +77,10 @@ class file_manager:
             missing_header_paths = self.find_missing_headers(source_instances,
                                                              header_instances)
 
-        all_header_paths = list(set(self.header_paths + extra_header_paths +
-                                    missing_header_paths))
-        header_instances = list(set(header_instances +
-                                    missing_header_instances))
+        all_header_paths = remove_duplicates(self.header_paths + extra_header_paths +
+                                             missing_header_paths)
+        header_instances = remove_duplicates(header_instances +
+                                             missing_header_instances)
 
         # Process library files
 
@@ -99,8 +99,8 @@ class file_manager:
             if len(filename) < 3 or filename[:3] != 'lib':
                 self.abort_invalid_lib(filename)
 
-            if filename.split('.')[-1] == 'so' \
-               and path not in shared_library_paths:
+            if filename.split('.')[-1] == 'so' and \
+               path not in shared_library_paths:
 
                 shared_library_paths.append(path)
 
@@ -277,7 +277,7 @@ class file_manager:
 
                         missing_headers.append(header_name)
 
-            missing_headers = list(set(missing_headers))
+            missing_headers = remove_duplicates(missing_headers)
 
             if len(missing_headers) > 0:
                 print('\nFound unspecified header dependencies' +
@@ -287,10 +287,10 @@ class file_manager:
                 extra_header_paths = self.process_headers(missing_headers,
                                                           abort_on_fail=False)
 
-            missing_header_instances = list(set(missing_header_instances +
-                                                extra_header_instances))
-            missing_header_paths = list(set(missing_header_paths +
-                                            extra_header_paths))
+            missing_header_instances = remove_duplicates(missing_header_instances +
+                                                         extra_header_instances)
+            missing_header_paths = remove_duplicates(missing_header_paths +
+                                                     extra_header_paths)
 
             iter_list = extra_header_instances
 
@@ -1023,6 +1023,14 @@ def abort_multiple_something(something, something_name, name_list=False):
     sys.exit(1)
 
 
+def remove_duplicates(duplist):
+
+    seen = set()
+    seen_add = seen.add
+
+    return [x for x in duplist if not (x in seen or seen_add(x))]
+
+
 def read_flag_groups(compiler):
 
     # This functions reads the debug_flags.ini and performance_flags.ini
@@ -1111,7 +1119,7 @@ def get_common_makefile_parameters(manager, sources, default_compiler, mpi_compi
         compiler = default_compiler
 
     debug_flags, fast_flags = read_flag_groups(compiler)
-    
+
     if internal_libraries.pop('mpi'):
         compiler = mpi_compiler
 
