@@ -33,7 +33,7 @@ class fortran_source:
 
         self.programs, self.modules, self.external_functions, self.external_subroutines, \
             self.module_dependencies, self.included_headers, self.procedure_dependencies, \
-            self.library_usage = self.parse_content()
+            self.internal_libraries = self.parse_content()
 
         if len(self.programs) > 1:
             self.abort_multiple_programs()
@@ -82,10 +82,10 @@ class fortran_source:
                   '\n'.join(['-{}'.format(header_name)
                              for header_name in self.included_headers]))
 
-        if self.library_usage['mpi']:
+        if self.internal_libraries['mpi']:
             print('Uses MPI')
 
-        if self.library_usage['openmp']:
+        if self.internal_libraries['openmp']:
             print('Uses OpenMP')
 
         module_list = ' '.join(self.modules)
@@ -127,7 +127,7 @@ class fortran_source:
         included_headers = []
         procedure_dependencies = []
 
-        library_usage = {'mpi': False, 'openmp': False}
+        internal_libraries = {'mpi': False, 'openmp': False}
 
         prev_line = ''
         inside = False
@@ -191,9 +191,9 @@ class fortran_source:
                     dep = words_with_case[1][1:-1]
 
                     if dep == 'mpif.h':
-                        library_usage['mpi'] = True
+                        internal_libraries['mpi'] = True
                     elif dep == 'omp_lib.h':
-                        library_usage['openmp'] = True
+                        internal_libraries['openmp'] = True
                     else:
                         included_headers.append(dep)
 
@@ -230,9 +230,11 @@ class fortran_source:
                     for dep in deps:
 
                         if dep == 'mpi' or dep == 'mpi_f08':
-                            library_usage['mpi'] = True
+                            internal_libraries['mpi'] = True
                         elif dep == 'omp_lib':
-                            library_usage['openmp'] = True
+                            internal_libraries['openmp'] = True
+                        elif len(dep) >= 4 and dep[:4].lower() == 'only':
+                            break
                         else:
                             module_dependencies.append(dep + '.mod')
 
@@ -244,9 +246,9 @@ class fortran_source:
                     dep = words_with_case[1][1:-1]
 
                     if dep == 'mpif.h':
-                        library_usage['mpi'] = True
+                        internal_libraries['mpi'] = True
                     elif dep == 'omp_lib.h':
-                        library_usage['openmp'] = True
+                        internal_libraries['openmp'] = True
                     else:
                         included_headers.append(dep)
 
@@ -287,7 +289,7 @@ class fortran_source:
         included_headers = makemake_lib.remove_duplicates(included_headers)
 
         return programs, modules, external_functions, external_subroutines, \
-            module_dependencies, included_headers, procedure_dependencies, library_usage
+            module_dependencies, included_headers, procedure_dependencies, internal_libraries
 
     def detect_procedure_calls(self, functions_to_detect, subroutines_to_detect):
 

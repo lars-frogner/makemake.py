@@ -237,7 +237,7 @@ generate_wrapper = 'w' in flag_args
 if executable and library:
     abort_x_and_l()
 
-# Convert any relative paths to absoult paths
+# Convert any relative paths to absolute paths
 convert_relative_paths(working_dir_path, source_paths)
 convert_relative_paths(working_dir_path, header_paths)
 convert_relative_paths(working_dir_path, library_paths)

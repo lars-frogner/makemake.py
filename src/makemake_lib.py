@@ -110,7 +110,7 @@ class file_manager:
             library_link_names.append(filename[3:])
 
             if has_unlisted_path and \
-               path not in self.library_paths + extra_library_paths:
+               path not in (self.library_paths + extra_library_paths):
 
                 extra_library_paths.append(path)
 
